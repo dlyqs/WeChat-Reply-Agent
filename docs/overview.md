@@ -26,7 +26,7 @@
 
 当前 Windows 固定收发已经通过 G1；G2 的真实多轮结果只以主计划和私有报告为准。
 旧 Mac AX/视觉诊断和 wxauto4 探针为历史研究，不再作为当前安装入口。
-API、React 工作台与正式运行服务已实现；serve 同源提供内置构建产物，初始 stopped/dry-run。详见 [API 与工作台](api-workbench.md)。知识/长期记忆尚未实施，界面及真实微信状态同步待用户验收。
+API、React 工作台与正式运行服务已实现；serve 同源提供内置构建产物，初始 stopped/dry-run。详见 [API 与工作台](api-workbench.md)。界面及真实微信状态同步已由用户人工验收通过；知识/长期记忆尚未实施。
 
 ## 验证和运行纪律
 
@@ -40,4 +40,4 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
-本次用户明确要求 Phase 3–4；完成软件实现与自动验证后停止，不进入 Phase 5。工作台人工验收单独保留。
+本次用户明确要求 Phase 3–4；完成软件实现与自动验证后停止，不进入 Phase 5。工作台人工验收已由用户确认通过。

@@ -2,7 +2,7 @@
 
 基于 wechatauto-replica 的个人微信 AI 回复应用。目标是在固定 Windows 环境中完成“测试好友发消息 → Agent 处理 → 微信回复”，并提供本地工作台、知识检索、联系人记忆和真实演示视频。
 
-当前已内置固定 Replica 基座，Windows 微信 4.1.15.56 已完成 G1 固定收发验收。最小 LangGraph、DeepSeek 兼容客户端和 SQLite 原型账本已实现，真实三轮 G2 已通过（含上下文追问）；测试 worker 已自动停止。Phase 3 正式迁移/运行控制与 Phase 4 API/工作台已实现并完成离线验证；工作台人工验收、知识/长期记忆和最终交付尚未完成。
+当前已内置固定 Replica 基座，Windows 微信 4.1.15.56 已完成 G1 固定收发验收。最小 LangGraph、DeepSeek 兼容客户端和 SQLite 原型账本已实现，真实三轮 G2 已通过（含上下文追问）；测试 worker 已自动停止。Phase 3 正式迁移/运行控制与 Phase 4 API/工作台已完成自动验证和用户人工验收；知识/长期记忆和最终交付尚未完成。
 
 执行顺序、阶段状态及完成条件见 [执行计划](docs/wechat-agent-plan.md)，当前代码事实见 [开发入口](docs/overview.md)。
 

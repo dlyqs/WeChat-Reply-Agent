@@ -7,14 +7,14 @@
 execution mode: auto_until
 automatic start phase: 3
 automatic stop phase: 4
-execution state: implementation_completed_manual_acceptance_pending
+execution state: completed
 conversation relay: off
-current change: phase 3 completed; phase 4 implemented; workbench human acceptance pending; worker stopped
+current change: phase 3-4 completed; workbench human acceptance passed; automatic scope finished
 wechat foundation: wechatauto-replica 1.2.7.0
 upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 ~~~
 
-v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义；后续合并为 Phase 4–7。2026-10-21 先前已完成 Phase 1–2 与 G1/G2；本次用户明确授权自动完成 Phase 3–4。Phase 3 已完成，Phase 4 软件实现和自动验证已完成，工作台界面/真实微信状态同步保留待用户人工验收。本次不推进 Phase 5。
+v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义；后续合并为 Phase 4–7。2026-10-21 先前已完成 Phase 1–2 与 G1/G2；本次用户明确授权自动完成 Phase 3–4。Phase 3–4 软件实现、自动验证和用户人工验收均已完成。本次不推进 Phase 5。
 
 ## 1. 交付目标与范围
 
@@ -183,7 +183,7 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | Phase 1 | 基座内化、适配与固定收发 | 必需 | completed | 固定基座已内化；Windows 4.1.15.56 G1 通过，私有报告已记录 |
 | Phase 2 | 最小 Agent 闭环 | 必需 | completed | LangGraph/SQLite 原型与 DeepSeek 三轮 G2 通过；达到 3 条上限后已停发 |
 | Phase 3 | 配置、持久化与运行控制 | 必需 | completed | 配置/迁移/单线程运行控制、故障回放及 Windows 干净目录锁安装通过 |
-| Phase 4 | 本地 API 与工作台 | 必需 | implemented_pending_manual | API/React 工作台/serve 及自动检查完成；界面与真实微信状态同步待用户验收 |
+| Phase 4 | 本地 API 与工作台 | 必需 | completed | API/React 工作台/serve、自动检查及用户确认的界面/真实微信状态同步验收通过 |
 | Phase 5 | 知识检索与长期记忆 | 必需 | pending | Phase 4；复用 Phase 2 Agent 扩展 |
 | Phase 6 | 业务工具、文件与语音入口 | 可选，未选择 | pending | Phase 5；未选择则记录不纳入并转 Phase 7 |
 | Phase 7 | 集成回归、录像与交付 | 必需 | pending | Phase 5，以及已选择的 Phase 6 项 |
@@ -276,7 +276,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - P04-03：前端类型检查与构建通过；用户验证界面、交互和微信状态同步。
 - P04-04：uv run wechat-agent serve 可从构建产物启动；没有 Node 开发服务器时仍能管理运行。
 
-完成记录（2026-10-21）：FastAPI 回环/Host/Origin/写请求头校验、稳定错误、分页、运行控制、会话/Agent/outbox、配置与显式只读诊断 API 已接通；React/TypeScript/Vite + Radix Tabs 提供概览/会话/设置，内置构建产物由 serve 同源提供，无需 Node 服务器。137 项 Python 离线测试、Ruff、前端类型/构建、wheel/sdist 与 Windows 干净安装/真实 HTTP 检查通过。P04-03 的界面人工验收，以及 P04-02 的真实微信状态同步仍为 not_tested；本次未打开页面或发送微信，未标真人验收 passed。证据 `.local/acceptance/phase-4/report.json`，人工清单见 api-workbench.md。自动实施到此停止，不进入 Phase 5。
+完成记录（2026-10-21）：FastAPI 回环/Host/Origin/写请求头校验、稳定错误、分页、运行控制、会话/Agent/outbox、配置与显式只读诊断 API 已接通；React/TypeScript/Vite + Radix Tabs 提供概览/会话/设置，内置构建产物由 serve 同源提供，无需 Node 服务器。137 项 Python 离线测试、Ruff、前端类型/构建、wheel/sdist 与 Windows 干净安装/真实 HTTP 检查通过。随后用户按人工清单完成页面/配置/诊断、dry-run、暂停/恢复/停止、一次 live 收件核对以及重启默认状态/历史保留检查，并确认全部通过；P04-02-live 和 P04-03-human 据用户确认标为 passed，证据来源为用户人工操作及收件核对，不是助手 UI 自动化。未要求用户刻意制造 unknown，相关故障分支仍以离线验证为依据。证据 `.local/acceptance/phase-4/report.json`，人工清单见 api-workbench.md。自动实施到此停止，不进入 Phase 5。
 
 ### Phase 5：知识检索与按联系人隔离的长期记忆
 
@@ -354,14 +354,14 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 1. 下一次先读本计划、overview 和 Windows 接入说明，核对当前工作区、提交、已有 Windows 证据及适用约束。
 2. 不再安装旧 wxauto4 探针依赖，不按旧 Mac AX/OCR 选型继续试错；旧文件只作历史，必要契约和测试可复用。
-3. 先前 Phase 1–2 与 G1/G2 已完成；本次明确执行 Phase 3–4，软件实现与自动检查已完成，人工验收项保留。G1/G2 缺失或环境未就绪不能启动运行服务。
+3. 先前 Phase 1–2 与 G1/G2 已完成；本次明确执行 Phase 3–4，软件实现、自动检查与用户人工验收已完成。G1/G2 缺失或环境未就绪不能启动运行服务。
 4. Phase 1–3 编号保持，旧 Phase 4–6/11–15 相关应用集成合并到新 Phase 4；旧 7/9/13 的知识记忆归新 Phase 5；旧 8/10 的工具与附件归新 Phase 6；旧 15–18 的打包/验证/录像归新 Phase 7。
 5. 旧用例编号和报告保留其日期与方案，不改写旧测试结果，不将其映射成新基座已通过；新记录注明 plan_version=v4 和 foundation=replica。
-6. 本次自动授权终点为 Phase 4；界面/真实连接人工验收待用户核对，后续 Phase 5–7 按明确阶段指令推进。
+6. 本次自动授权终点为 Phase 4；界面/真实连接人工验收已获用户确认，后续 Phase 5–7 按明确阶段指令推进。
 7. 运行时遇到上游缺陷只做必要且可追溯的补丁；改变产品范围、控制路线或支持声明须明确更新本计划。
 
 ## 9. 最终完成条件
 
 Phase 1–5 与 Phase 7 的必需任务、G1/G2、工作台人工验收和真实视频齐备；Phase 6 仅对明确选择的项目验收。应用可从干净 Windows 源码包启动，复用基座作为内置依赖，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、离线截图、模型控制台或阶段文档不能作为最终完成。
 
-本次执行范围由用户明确更新为 Phase 3–4；软件实现与自动检查完成后停止，不自动实施 Phase 5；工作台人工验收仍待核对。测试采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。
+本次执行范围由用户明确更新为 Phase 3–4；软件实现与自动检查完成后停止，不自动实施 Phase 5；工作台人工验收已获用户确认。测试采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。
