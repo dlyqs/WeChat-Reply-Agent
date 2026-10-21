@@ -276,3 +276,11 @@ uv run python scripts/acceptance/mac_capture_check.py --window-mode independent 
 不能通过清缓存解除停发。前端仅类型/构建检查，没有打开浏览器或执行 CUA/Playwright。
 本轮汇总在 `.local/acceptance/mac/phase-6/report.json`，用户验收在 `workbench-human.json`，
 干净安装在 `clean-install-final/report.json`；Windows 延期说明在 `.local/acceptance/windows/phase-6/report.json`。
+
+## Phase 7–9 续做
+
+本轮已实现共享知识/长期偏好及工作台入口、正式服务离线回放、打包和最终验收/录像脚本。
+Mac Phase 9 干净目录锁安装、Swift 构建/自检、stopped/dry-run HTTP 及知识 CRUD 通过，
+证据在 `.local/acceptance/mac/phase-9/`。未执行真实微信或浏览器操作；严格 Mac G1/G2
+和新知识/记忆真实回复/界面均待用户。原降级模式及限制继续适用，不再次取钥或变更客户端。
+下一步按 [最终验收清单](delivery-checklist.md)；Phase 8 未选择，不纳入交付。

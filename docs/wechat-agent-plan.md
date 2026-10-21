@@ -4,21 +4,21 @@
 本文件是阶段状态、实施顺序和完成条件的唯一来源；代码导航见 [overview.md](overview.md)。
 
 ~~~text
-execution mode: close_phase_6_degraded_mac
-automatic start phase: 6
-automatic stop phase: 6 (Mac accepted; Windows native regression deferred by user)
-execution state: phase_6_mac_passed_windows_native_pending_worker_stopped
+execution mode: implement_phases_7_9_offline
+automatic start phase: 7
+automatic stop phase: 9 (before final human/native acceptance and real video)
+execution state: implementation_ready_pending_final_human_acceptance
 conversation relay: off
-current change: shared service/API/workbench and ledger; explicit degraded Mac native adapter
-last completed implementation scope: Windows phases 1-4; Mac phases 5-6 user-authorized degraded flow
-next implementation phase: none automatic; Phase 7 requires a new request
+current change: bounded knowledge/preferences, workbench CRUD, service replay and local delivery tools
+last completed implementation scope: Phase 7 implementation; Phase 8 not selected; Phase 9 offline tooling/docs
+next implementation phase: none automatic; final human/native acceptance and video remain
 windows foundation: wechatauto-replica 1.2.7.0
 windows upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 macOS reference: acmerfight/0a01249ef72970d07a2603dbb629e80f
 macOS reference revision: c98dbb10cf23c30e83d5d744905101b0880887a0
 ~~~
 
-本轮执行以 Phase 6「本轮范围与完成记录」为准：用户确认本机 Mac 全部验收通过，并明确将 Windows 真实回归留待验证。Phase 5 的降级授权继续适用；旧交接清单及严格验收条件保留，不能用降级流程结果改写严格 G1/G2；不自动进入 Phase 7。
+本轮用户明确授权继续 Phase 7–9，最终需要用户测试验证的环节除外。已完成知识/记忆、工作台与交付工具实现及可执行离线检查；Phase 8 按原选择状态不纳入。Phase 6 已接受的 Mac 降级结论继续适用，严格 Mac G1/G2、Windows 新共享层原生回归、两平台 Phase 7 人工验收和真实录像仍待用户；不以离线结果改写原生证据。
 
 v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。Mac Phase 5 降级流程已通过；Phase 6 正式服务、工作台、绑定独立窗导航、多行/emoji/近长度上限发送和两轮真实 Agent 回复已通过本机及用户验收。Windows 合成回归通过，真实回归延期；严格视觉 G1/G2 仍未完成。
 
@@ -228,11 +228,11 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | Phase 4 | 本地 API 与工作台 | 必需 | completed | API/React 工作台/serve、自动检查及用户确认的界面/真实微信状态同步验收通过 |
 | Phase 5 | macOS 固定收发与最小 Agent 原型 | 必需，新增 | completed_degraded | 191 项测试及 Swift 自检通过；固定自然对话一次收件、真实模型两轮及 DB 确认通过，用户接受实际轮数并要求标通过；worker 已停止，严格 G1/G2 未过 |
 | Phase 6 | macOS 与 Windows 已有应用功能对齐 | 必需，新增 | completed_degraded | Mac 正式服务/工作台、窗口导航及自然对话收件经用户确认通过；222 项测试、构建及 Mac 干净安装通过；Windows 合成回归通过，真实回归按用户决定待验证；严格 Mac G1/G2 未过 |
-| Phase 7 | 知识检索与长期记忆 | 必需，原 Phase 5 | pending | Phase 6；在两平台共用的 Agent/API 上扩展 |
-| Phase 8 | 业务工具、文件与语音入口 | 可选，未选择，原 Phase 6 | pending | Phase 7；未选择则记录不纳入并转 Phase 9 |
-| Phase 9 | 双平台集成回归、录像与交付 | 必需，原 Phase 7 | pending | Phase 6/7，以及已选择的 Phase 8 项 |
+| Phase 7 | 知识检索与长期记忆 | 必需，原 Phase 5 | implemented_pending_human_acceptance | TXT/Markdown、jieba/FTS5、来源、联系人偏好与工作台 CRUD 已实现；两平台回复/界面待用户 |
+| Phase 8 | 业务工具、文件与语音入口 | 可选，未选择，原 Phase 6 | skipped_not_selected | 未选择；交付明确不纳入，无空入口 |
+| Phase 9 | 双平台集成回归、录像与交付 | 必需，原 Phase 7 | implemented_pending_human_acceptance_and_video | 12 项正式服务离线回放、Mac 干净安装、verify/package、源码草稿及录像脚本；Windows 原生/最终人工项和录像待验证 |
 
-原授权为 Phase 5–6；用户先接受 Phase 5 降级结果，再明确要求继续 Phase 6，最终确认 Mac 全部验收通过、Windows 真实回归待验证。默认原型仍要求 G1；显式降级 profile 与 `--allow-degraded-mac-ui` 同时启用时允许降级原型。正式服务则要求匹配的已接受 Phase 5 降级证明和原生回执。该例外不改变 Windows 门禁，不将严格 G1/G2 标通过，也不授权 Phase 7–9。
+原 Phase 5–6 授权和验收记录保持独立；本次新请求另行授权 Phase 7–9 的实现与离线验证。默认原型仍要求 G1；显式降级 profile 与 `--allow-degraded-mac-ui` 同时启用时允许降级原型。正式服务继续要求匹配的已接受 Phase 5 降级证明和原生回执；不改变 Windows 门禁，不将严格 G1/G2 标通过。
 
 ### Phase 1：内化微信控制基座并通过 G1
 
@@ -497,11 +497,11 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 任务：
 
-- [ ] 先支持本地 TXT/Markdown 知识导入、分块、jieba 中文切词与 FTS5 检索、来源引用、删除后不再召回；不增加向量服务。
-- [ ] 在既有 LangGraph 中加入确定边界的检索和记忆读取/更新；无知识命中时明确说明，不编造来源。
-- [ ] 区分短期上下文与长期事实；按账号/联系人隔离，支持偏好更正、查看/删除与跨重启保留。
-- [ ] 工作台可导入/删除知识、查看/更正/忘记记忆，并展示真实处理结果。
-- [ ] 聊天和文档不能修改系统设置、调用任意命令或读取其他联系人资料。
+- [x] 先支持本地 TXT/Markdown 知识导入、分块、jieba 中文切词与 FTS5 检索、来源引用、删除后不再召回；不增加向量服务。
+- [x] 在既有 LangGraph 中加入确定边界的检索和记忆读取/更新；无知识命中状态与模型约束明确，不编造来源；实际回复效果留待人工。
+- [x] 区分短期上下文与长期事实；按账号代数/账号/发送模式/联系人隔离，支持偏好更正、查看/删除与跨重启保留。
+- [x] 工作台可导入/删除知识、查看/更正/忘记记忆，并展示真实处理结果；界面人工核对待执行。
+- [x] 聊天和文档作为非可信数据，不能修改系统设置、调用任意命令或读取其他联系人资料。
 
 验收：
 
@@ -510,7 +510,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - P07-03：知识/记忆入口接真实 API，失败有明确状态；用户分别在已验收的 Windows/Mac 组合核对回复。
 - P07-04：模型输入受上下文预算限制，知识与记忆不会无界增长或直接进入运维日志。
 
-完成记录：未开始。
+完成记录（2026-10-22）：实现 `knowledge/`、`memory/`、SQLite v3 增量迁移、LangGraph 检索/记忆读取与暂存、正式完成事务内偏好更新、知识/记忆 API 与工作台入口。TXT/Markdown 单份 48,000 字节、200 份/8 MB；600 字分块/80 字重叠，Agent 最多 3 个220字摘录，统一输入预算。每位联系人最多20条/每条200字偏好，仅整条明确指令或本机工作台可修改；取消/模型失败不写入。更正/忘记清除该联系人短期上下文，删除知识清除所有短期上下文，历史收发证据保留。P07-01/02/04 离线契约通过；P07-03 API/构建通过、两平台原生回复及界面效果 `not_tested`，阶段为实现完成待人工验收。
 
 ### Phase 8：可选业务工具、文件与语音入口
 
@@ -529,7 +529,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - P08-02：选中文件/语音能力使用合成样例和真实可得输入验证，不把占位符当正文；两平台素材获取能力分别声明。
 - P08-03：选中功能在最终应用与演示中可操作，其余入口隐藏。
 
-完成记录：未开始；未选择不标 passed，交付清单注明不纳入。
+完成记录（2026-10-22）：`skipped_not_selected`。本次沿用未选择状态，按计划直接进入 Phase 9；业务工具、PDF/DOCX 和语音不纳入，README/交付清单已注明，不显示空入口，不标 passed。
 
 ### Phase 9：双平台集成回归、真实录像与源码交付
 
@@ -537,11 +537,12 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 任务：
 
-- [ ] 以正式服务回放同文/重复事件、本人/未知过滤、模型失败、发送未知、暂停/重启和知识/记忆更新，必要自动检查通过。
+- [x] 以正式服务回放同文/重复事件、本人/未知过滤、模型失败、发送未知、暂停/重启和知识/记忆更新，必要自动检查通过。
 - [ ] 在 Windows、Mac 各一个已验收组合完成代表性微信对话及工作台操作；记录版本、窗口条件、延迟和已知限制，不要求各平台第二版本或 24 小时运行。
-- [ ] 给出 3–5 分钟真实录像脚本：启动→好友提问与追问→知识问答→记忆→暂停恢复→工作台记录；覆盖两平台实际运行，可用主片加另一平台补充片；选中 Phase 8 时再加入相应场景。
+- [x] 给出 3–5 分钟真实录像脚本：启动→好友提问与追问→知识问答→记忆→暂停恢复→工作台记录；覆盖两平台实际运行，可用主片加另一平台补充片；未选择 Phase 8。
 - [ ] 用户录制并核对视频；真实读写、人工操作和实际等待如实呈现，剪辑标明，未实现能力不展示为已实现。
-- [ ] 交付包含应用源码、Windows 内置基座、Mac 参考源码与原生桥构建说明、平台依赖/锁文件、合成样例、许可/NOTICE、启动说明、脱敏验收摘要和视频；排除 .env、密钥、解密库、校准截图、私聊、临时微信副本与运行缓存，不分发微信客户端。
+- [x] 源码草稿包含应用源码、Windows 内置基座、Mac 参考源码与原生桥构建说明、平台依赖/锁文件、合成样例、许可/NOTICE、启动说明与脱敏摘要；允许目录归档、秘密模式扫描与逐文件哈希，排除私有运行资料和微信客户端。
+- [ ] 用户确认真实视频后生成最终包；`package` 默认拒绝缺验收/视频的正式包，`--draft` 明确生成待验收草稿。
 - [ ] 两平台从干净目录核对包内相对路径、uv 本地 path 依赖、SQLCipher/桥定位和启动；只打本地包，不默认推送、发布或上传。
 
 验收：
@@ -551,9 +552,11 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - P09-03：视频文件实际存在、可播放，覆盖两平台真实闭环和支持限制，经用户确认。
 - P09-04：源码包/历史/录像不含秘密或无关私聊，许可与两平台上游补丁记录齐备。
 
-完成记录：未开始。缺任一平台必需的 G1/G2、功能对齐、人工验收或真实录像时不得标整个应用完成。
+完成记录（2026-10-22）：新增 `replay --suite all`、`verify`、`package [--draft] --video` 和 Phase 9 干净安装检查。12 个合成平台/故障场景通过，均运行正式 RuntimeService/Prototype/LangGraph/账本，只注入合成 adapter/model；Mac 从干净 sdist 按锁安装、Swift 自检和 stopped/dry-run HTTP 及知识 CRUD 通过。源码草稿在 `dist/submission/`，公开摘要为 `docs/acceptance-summary.json`；私有回放/验证在 `.local/acceptance/offline/phase-9/`，Mac 安装在 `.local/acceptance/mac/phase-9/`。P09-01 离线通过；P09-02 Mac 安装通过、Windows 待验证；P09-03 未录像；P09-04 源码允许目录及已知秘密模式检查通过、人工隐私/视频待核对。缺任一平台必需的 G1/G2、功能对齐、人工验收或真实录像时不得标整个应用完成。
 
 ## 7. 验证、日志与协作纪律
+
+本轮 Phase 7–9 自动验证：240 项 Python 测试、Ruff lint/format、前端类型/构建、wheel/sdist、12 项正式服务合成回放通过；Mac sdist 和实际源码 ZIP 均通过干净安装、Swift 自检与停止状态 HTTP/知识 CRUD。应用 SQLite 及 WAL/SHM 限制为当前用户权限（Mac 0600，目录0700；Windows 沿用当前用户 ACL）。未执行真实微信或界面操作，最终人工清单与录像保持待验证。
 
 - 自动验证针对契约、身份/去重、事务/崩溃、Agent/接口和构建。微信、模型效果、界面和视频由用户核对，mock 不替代真人结果。
 - 助手不自行打开页面、Playwright、CUA 或 GitNexus；不创建子 agent、新会话、worktree 或自动 relay。前端只做静态/构建和必要逻辑测试。
@@ -565,12 +568,12 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 ## 8. 续做与旧版本衔接
 
-1. 下一次先读本计划和 overview，再核对对应平台接入说明、提交、私有报告与实际环境。本轮收尾停在 Phase 6；Phase 7 需要新请求。
+1. 下一次先读本计划和 overview，再核对对应平台接入说明、提交、私有报告与实际环境。本轮 Phase 7–9 实现和离线交付准备完成；后续按 delivery-checklist.md 执行用户最终验收及录像。
 2. 当前以 Phase 6 本轮完成记录为准；Phase 5 旧交接仅作历史。独立窗和 Apple 系统选择器均已实测黑屏，不重复无依据的捕获重试。恢复严格验收仍需可核验输入界面及对应稳定性证据；不安装旧 wxauto4、不猜旧 AX 消息控件、不重复取钥。
 3. Windows Phase 1–4/G1/G2/人工验收保持 completed，本次原生回归延期。Mac 默认 visual 仍要求本机严格 G1/G2；显式 independent/ax-window-db 服务要求本机匹配且用户接受的降级证明及固定发送原生回执，不能借用另一平台报告。
 4. 编号映射：v4 Phase 1–4 不变；v4 Phase 5（知识记忆）→v5 Phase 7，v4 Phase 6（可选增强）→v5 Phase 8，v4 Phase 7（交付）→v5 Phase 9。更早的 18 阶段已在 v4 收敛；按主题继续映射到本版，不恢复旧执行顺序。
 5. 新增用例使用 P05/P06；原尚未实施的知识/增强/交付用例顺延为 P07/P08/P09。任何既存旧编号/报告保留原 plan_version、日期与含义，用「版本+平台+阶段+用例」识别，不覆盖或改写旧测试结果。
-6. 本次已授权的 Phase 5–6 Mac 降级范围已完成。后续新请求可继续 Phase 7 或补齐严格 Mac/Windows 原生回归；延期项保留，Windows 历史通过不豁免共享层改动后的真实回归。
+6. 原 Phase 5–6 Mac 降级范围已完成；本次新授权的 Phase 7–9 实现和离线验证已完成。后续补齐严格 Mac/Windows 原生回归、两平台 Phase 7 人工核对及录像；Windows 历史通过不豁免共享层改动后的真实回归。
 7. v5 实施记录采用实际 platform/foundation；Windows v4 原始报告通过明确兼容映射及本机绑定校验识别，Mac 只能使用自己的 v5 报告。每次收尾同步 overview/README/接入说明，避免计划目标和已实现能力混写。
 8. 运行时遇到上游缺陷只做必要且可追溯的补丁；改变产品范围、控制路线或支持声明须明确更新本计划。
 
@@ -578,4 +581,4 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 Phase 1–7 与 Phase 9 的必需任务、Windows 和 Mac 各自的 G1/G2、Phase 6 对齐验收、两平台工作台人工验收和真实视频齐备；Phase 8 仅对明确选择的项目验收。应用可分别从干净 Windows/Mac 源码包按平台步骤安装启动，原生读取/发送隔离，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、固定会话短文本原型、离线截图、模型控制台或阶段文档不能作为最终完成。
 
-当前交付事实为 Windows Phase 1–4 已完成，Mac Phase 5–6 在用户授权的降级范围内通过；正式服务/API/工作台、已打开独立窗导航、格式消息及两轮新增 Agent 回复均经本机/人工核对，worker 已停止。严格 Mac 视觉 G1/G2 未通过；Windows 本次真实回归按用户选择待验证，不记全应用最终完成，不自动实施 Phase 7。真实收发采用自然日常对话、单好友低频、至少 30 秒发送间隔、单次最多 3 条回复。
+当前交付事实为 Windows Phase 1–4 已完成，Mac Phase 5–6 在用户授权的降级范围内通过；Phase 7 知识/记忆实现和 Phase 9 离线回放、安装/交付工具已完成，Phase 8 未选择。严格 Mac 视觉 G1/G2、Windows 本次原生回归、两平台 Phase 7 界面与模型效果、真实录像及最终人工隐私检查仍待用户；不记全应用最终完成。本轮未连接或发送真实微信，也未打开页面；真实测试仍采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复。

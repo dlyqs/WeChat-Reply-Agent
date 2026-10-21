@@ -44,3 +44,10 @@ G1 后复用同一适配器、规范化事件和私有存储。应用按间隔�
 ## 旧探针说明
 
 scripts/probes/windows_read.py、windows-requirements.* 和 examples/profiles/windows-read-candidate.json 属于旧 wxauto4 41.1.7 路线，未经过 Windows 实测；其合成守卫测试可参考。它们不调用 Replica，不能用于本次 G1，也不应继续安装其锁文件。
+
+## Phase 7–9 续做
+
+共享层已新增知识检索、联系人长期偏好及工作台 API/UI；Windows 契约的正式服务离线故障回放通过。
+本轮没有 Windows 主机的原生安装、读取或发送证据，既有 Phase 1–4 验收不替代新共享层回归。
+从源码包运行 `uv sync --locked --extra windows`，并按 [最终验收清单](delivery-checklist.md)
+核对原生闭环、知识/记忆、界面、干净安装和真实录像。Phase 8 未选择，不纳入交付。

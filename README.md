@@ -1,12 +1,12 @@
 # WeChat Reply Agent
 
-基于 Windows wechatauto-replica 和 Mac 数据库/原生桥的个人微信 AI 回复应用。在固定桌面环境中完成“绑定好友发消息 → Agent 处理 → 微信回复”，提供本地工作台；知识检索、联系人记忆和最终演示交付尚待后续阶段。
+基于 Windows wechatauto-replica 和 Mac 数据库/原生桥的个人微信 AI 回复应用。在固定桌面环境中完成“绑定好友发消息 → Agent 处理 → 微信回复”，提供本地工作台、TXT/Markdown 知识检索与联系人偏好记忆。
 
-当前已内置固定 Replica 基座，Windows 微信 4.1.15.56 已完成 G1 固定收发验收。最小 LangGraph、DeepSeek 兼容客户端和 SQLite 原型账本已实现，真实三轮 G2 已通过（含上下文追问）；测试 worker 已自动停止。Phase 3 正式迁移/运行控制与 Phase 4 API/工作台已完成自动验证和用户人工验收；知识/长期记忆和最终交付尚未完成。
+当前已内置固定 Replica 基座，Windows 微信 4.1.15.56 已完成历史 G1/G2 及 Phase 3–4 工作台人工验收。Phase 7 知识/长期偏好、Phase 9 正式服务离线回放和源码交付工具已实现；两平台新功能的真实回复/界面核对、Windows 新回归、Mac 严格 G1/G2 和真实录像仍待用户。Phase 8 可选增强未选择，不纳入本次交付。
 
 执行顺序、阶段状态及完成条件见 [执行计划](docs/wechat-agent-plan.md)，当前代码事实见 [开发入口](docs/overview.md)。
 
-Mac Phase 5–6 已在显式降级模式下通过：一个已绑定独立 AX 聊天窗、一次剪贴板粘贴/发送、独立数据库确认，共用正式服务、API、账本和工作台。用户确认独立窗自动切回、两轮正式回复、含换行/emoji/长段落的消息完整收件及保持登录均通过。截图、空草稿、粘贴全文和遮挡检查未验证，严格 Mac G1/G2 未通过。222 项测试及 Mac 干净安装通过；Windows 本次合成回归通过，真实回归按用户选择待验证。worker 已停止，不自动进入 Phase 7。见 [Mac 接入与限制](docs/mac-probe.md)。
+Mac Phase 5–6 已在显式降级模式下通过：一个已绑定独立 AX 聊天窗、一次剪贴板粘贴/发送、独立数据库确认，共用正式服务、API、账本和工作台。用户确认独立窗自动切回、两轮正式回复、含换行/emoji/长段落的消息完整收件及保持登录均通过。截图、空草稿、粘贴全文和遮挡检查未验证，严格 Mac G1/G2 未通过。本轮 Phase 7–9 未打开页面、连接或发送微信；离线和人工项分别见 [交付清单](docs/delivery-checklist.md)。
 
 ## 技术路线与运行范围
 
@@ -16,7 +16,7 @@ Mac Phase 5–6 已在显式降级模式下通过：一个已绑定独立 AX 聊
 | Mac 基座 | 固定 Gist revision 的 Reader/SQLCipher 与本地 Swift 桥，MIT 来源和补丁见 third_party/wechat_mac_toolkit |
 | 消息读取 | Windows 为 Replica DB/WAL；Mac 为 SQLCipher 只读 DB/WAL、校验已有逐库密钥，首次取钥独立初始化 |
 | 回复发送 | Windows UIA/坐标/OCR 与剪贴板，允许 UIA 热激活；Mac 原生独立窗、剪贴板/按键及精确 DB 回读 |
-| Agent | LangGraph、可配置模型/人设、多轮上下文；知识检索与联系人记忆留待 Phase 7 |
+| Agent | LangGraph、可配置模型/人设、多轮上下文、jieba/FTS5 知识检索与按联系人隔离的长期偏好 |
 | 应用 | Python 3.12、FastAPI、SQLite、React/TypeScript/Vite；API/UI 不直接调用第三方 GUI 方法 |
 | 环境 | 固定 Windows x64 或 macOS Apple Silicon；每台本机一个账号/好友单聊、独立 DATA_DIR，桌面解锁且绑定窗口可用 |
 | 节奏 | 默认 15 秒轮询，可配置；不要求实时、多版本矩阵或全天候运行 |
@@ -56,7 +56,7 @@ uv run wechat-agent prototype --mode dry-run --duration 120 --max-replies 3
 
 旧 scripts/probes/windows_read.py 使用 wxauto4，旧 Mac doctor/probe 使用 AX；均保留作研究参考，不作为当前 Windows 路线的安装或验收入口。
 
-## 本地工作台（Phase 3–4、6）
+## 本地工作台（Phase 3–4、6–7）
 
 构建产物已随源码保存，安装 Python 依赖后无需 Node 服务即可运行：
 
@@ -72,11 +72,16 @@ Mac 改用 `uv sync --locked --extra mac`，独立安装 SQLCipher、构建 Swif
 - **概览**：实际平台/基座、降级能力、运行/连接状态、模式、启停、Agent 时间线及发送/人工处理。每次开始/恢复最多 3 条；需要模型 Key、绑定白名单与 10 秒以上轮询。Windows 要求本机匹配 G1/G2（v4 另需既有匹配账本）；Mac 视觉模式要求严格 G1/G2，显式降级模式要求本机匹配且用户接受的 Phase 5 降级报告及原生回执。
 - **会话**：按账号代数和发送模式隔离的会话、分页消息、基线/过滤/处理状态。回复及其输入引用在概览时间线中查看。
 - **设置**：校验后原子替换 `.env`，环境变量仍优先，密钥仅返回 configured 状态。空密钥保留，显式清除才删除；DATA_DIR、监听地址/端口与适配器需重启 CLI 修改。运行中不可保存设置，暂停后可保存并重新建立基线。
+- **知识与记忆**：导入/删除 UTF-8 TXT/Markdown、检索实际来源，查看/保存/更正/忘记联系人偏好。修改前暂停/停止；文档每份最多 48,000 字节、共200份/8 MB，偏好每位联系人最多20条。删除知识或更正/忘记偏好会清除相应短期上下文，历史收发证据保留。
 - **诊断**：显式只读环境/能力检查，不取钥、不热激活；点击开始才执行实际初始化。环境可用不等于已连接。
 
 暂停/停止会废弃迟到模型结果，等待当前调用结束；已经进入发送动作的调用会先落下结果。恢复与重启均不消费旧队列。崩溃中 sending 转 unknown，pending 转 paused，人工核对并标已发/作废后才可再次运行；此操作不重发。账号、原生数据库文件身份或应用账本被替换时拒绝继续，需要人工核实并重新绑定，不能只改账号别名。
 
 `RETENTION_DAYS` 在显式开始时清理过期平台缓存：Windows 为 Replica 密钥/快照/校准缓存，Mac 仅诊断缓存。Mac 密钥/原生回执、账本身份、去重、上下文、绑定和验收报告不会自动删除。首次迁移核对既有账号/代数，固定当前绑定和原生源库；保留 Windows 原指纹，不跨账号复用账本。清理或备份私有数据前须停止服务。
+
+长期偏好只接受整条明确指令，例如“记住我的偏好：饮品=乌龙茶”“更正我的偏好：饮品=白茶”“忘记我的偏好：饮品”。普通陈述不自动保存。偏好按账号代数、账号、发送模式及联系人隔离；成功生成回复且运行代数仍有效时与 outbox 同事务保存，模型失败/暂停丢弃不写入。dry-run 与 live 记忆分开，发送 unknown 不自动撤销已经保存的偏好。
+
+知识来自用户手动选择的本地文件，供本机绑定账号使用；检索命中和本联系人偏好会连同消息发送给已配置的模型。每轮最多3个220字知识摘录，受同一输入预算约束，来源由应用附到最终回复和执行记录。未命中/预算不足在执行记录明确展示，模型被要求明确说明资料缺失；实际回复效果需要用户核对。
 
 前端开发与重建（Node 22）：
 
@@ -99,7 +104,19 @@ Mac 显式降级模式无法自动检查既存草稿、粘贴全文和遮挡，�
 
 模型 Key、微信密钥、明文快照、消息/截图/校准记录仅留私有 DATA_DIR，不进入 Git、日志或公开交付。远程模型仅接收配置场景需要的输入。低频和旧版本不构成免于账号限制的保证。
 
-本期不提供群聊、多账号并发、朋友圈、批量营销、全量历史导入或长期无人值守承诺。可选业务工具、文件/语音入口按计划选择后实现，未实现时不显示入口。
+本期不提供群聊、多账号并发、朋友圈、批量营销、全量历史导入或长期无人值守承诺。Phase 8 未选择：订单/工单工具、PDF/DOCX 分析和语音识别均不纳入，不显示入口。
+
+## 离线回放与源码交付（Phase 9）
+
+```sh
+uv run wechat-agent replay --suite all --output .local/acceptance/offline/phase-9/replay.json
+uv run wechat-agent verify --output .local/acceptance/offline/phase-9/verify.json
+uv run wechat-agent package --draft --output dist/submission/wechat-reply-agent-source-draft.zip
+```
+
+回放使用正式运行服务和合成 adapter/model，不访问微信或远程模型。源码草稿包含两平台基座来源、锁文件、前端构建、合成知识样例、完整许可与脱敏摘要；按允许目录归档并生成逐文件 SHA256，排除私有目录、环境、数据库、缓存与微信客户端。`--draft` 明确表示人工验收及录像尚未齐备。
+
+用户按 [最终验收清单](docs/delivery-checklist.md) 完成两平台实测，并按 [3–5 分钟脚本](docs/demo-script.md) 录制、播放和检查真实视频后，可执行 `package --video /absolute/path/real-demo.mp4`。默认正式打包会检查公开摘要中的人工项及实际可解析视频，缺项拒绝。只打本地包，不上传或发布；当前不标整个应用最终完成。
 
 ## 许可证
 

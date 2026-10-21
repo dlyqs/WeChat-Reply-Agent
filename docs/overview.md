@@ -10,13 +10,14 @@
 
 | 位置 | 当前职责 |
 | --- | --- |
-| cli.py | doctor/connect/probe read/send/resolve/prototype/serve；平台锁、私有报告和显式发送边界 |
+| cli.py | doctor/connect/probe read/send/resolve/prototype/serve/replay/verify/package；平台锁、私有报告和显式发送边界 |
 | adapters/wechat/replica.py | 原生账号/单聊绑定、分片消息身份、方向、并列边界游标和发送三态 |
 | adapters/wechat/replica_bridge.py | 唯一原生桥；进程账号核对、私有缓存/校准、一次发送及精确新记录回读 |
 | adapters/wechat/replica_profile.py | 私有账号/好友 profile，不用显示昵称代替原生 username |
 | adapters/wechat/binding.py、base.py | 平台无关绑定/源库身份与连接、能力、验收、关闭契约；Windows 保留原账本指纹 |
 | adapters/wechat/mac_db.py、mac_bridge.py、mac_acceptance.py | Mac 只读 DB/WAL、精确发送回读、独立窗导航及本机验收证明 |
-| agent/graph.py、llm/client.py | 最小 LangGraph、上下文预算、结构化结果和单次限时兼容模型请求 |
+| agent/graph.py、llm/client.py | LangGraph 输入过滤/检索/记忆/上下文/模型/校验、统一预算与单次限时请求 |
+| knowledge/store.py、memory/store.py | 手动 TXT/Markdown 导入、jieba/FTS5 来源检索；账号/模式/联系人隔离的明确偏好及查看/更正/忘记 |
 | storage/database.py、migrations.py、repositories.py | 正式 SQLite 迁移、事务账本、身份约束与分页读模型；prototype.py 为兼容导出 |
 | runtime/service.py、worker.py | 单实例应用生命周期、唯一原生执行线程、代数/暂停/恢复/退出与只读诊断 |
 | api/、ui/、web/ | 回环/同源 API、React/TypeScript 源码和内置构建产物 |
@@ -24,11 +25,13 @@
 | runtime/prototype.py | 基线、事务轮询、过滤/合并、会话串行、低频发送、停止和不确定停发 |
 | scripts/acceptance/bind_replica.py | 根据明确提供的好友微信号，唯一定位账号与联系人，写私有绑定；不发送 |
 | tests/adapter、tests/prototype | 合成原生桥、上游补丁分支、账本/Agent/失败与恢复回归 |
+| acceptance/replay.py、delivery.py、scripts/acceptance/phase9_install_check.py | 正式服务离线回放、允许目录源码打包/哈希/媒体检查及平台干净安装 |
+| docs/delivery-checklist.md、demo-script.md、acceptance-summary.json | 最终人工验收、真实录像脚本和公开脱敏状态 |
 | .local/acceptance/phase-1、phase-2 | Git 忽略的原始实机与人工核对证据，不进入公开源码包 |
 
 当前 Windows 固定收发已经通过 G1；G2 的真实多轮结果只以主计划和私有报告为准。
 旧 Mac AX/视觉诊断和 wxauto4 探针为历史研究，不再作为当前安装入口。
-API、React 工作台与正式运行服务已实现；serve 同源提供内置构建产物，初始 stopped/dry-run。详见 [API 与工作台](api-workbench.md)。界面及真实微信状态同步已由用户人工验收通过；知识/长期记忆尚未实施。
+API、React 工作台与正式运行服务已实现；serve 同源提供内置构建产物，初始 stopped/dry-run。详见 [API 与工作台](api-workbench.md)。Phase 7 已加入知识/长期偏好与工作台 CRUD；先前工作台界面已由用户验收，新入口及模型效果需在两平台重新人工核对。
 
 ## 验证和运行纪律
 
@@ -43,7 +46,7 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
-本轮按用户授权完成 Phase 6 Mac 降级服务/工作台，严格 G1/G2 仍单独保留；Windows 本次原生回归待验证，不自动进入 Phase 7–9。Windows Phase 4 工作台人工验收保持原结果。
+本轮用户授权 Phase 7–9 的实现与可自动验证部分，已实现知识/记忆、12项正式服务回放及本地源码交付工具；Phase 8 未选择。严格 Mac G1/G2、Windows 原生回归、两平台 Phase 7 用户实测及录像仍待验证。Windows Phase 4 和 Mac Phase 6 原人工验收保持原结果。
 
 ## Mac Phase 5–6 当前状态
 
