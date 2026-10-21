@@ -12,14 +12,15 @@ import tarfile
 import tempfile
 import time
 import urllib.request
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 
 from wechat_reply_agent.cli import write_private
 from wechat_reply_agent.config import Settings
 from wechat_reply_agent.privacy import private_directory
 
 
-def main():
+def main(phase=6):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--uv", type=Path, default=shutil.which("uv"))
     parser.add_argument(
@@ -33,12 +34,28 @@ def main():
         raise SystemExit("output_exists")
     private_directory(args.output)
     target = Path(tempfile.mkdtemp(prefix="source-", dir=args.output))
-    with tarfile.open(args.archive) as archive:
-        names = archive.getnames()
-        assert not any(
-            "/.local/" in n or n.endswith("/.env") or "/node_modules/" in n for n in names
-        )
-        archive.extractall(target, filter="data")
+    if zipfile.is_zipfile(args.archive):
+        with zipfile.ZipFile(args.archive) as archive:
+            names = archive.namelist()
+            assert names and not any(
+                "/.local/" in n
+                or n.endswith("/.env")
+                or "/node_modules/" in n
+                or PurePosixPath(n).is_absolute()
+                or ".." in PurePosixPath(n).parts
+                for n in names
+            )
+            assert not any(
+                (entry.external_attr >> 16) & 0o170000 == 0o120000 for entry in archive.infolist()
+            )
+            archive.extractall(target)
+    else:
+        with tarfile.open(args.archive) as archive:
+            names = archive.getnames()
+            assert not any(
+                "/.local/" in n or n.endswith("/.env") or "/node_modules/" in n for n in names
+            )
+            archive.extractall(target, filter="data")
     checkout = next(target.iterdir())
     env = os.environ.copy()
     for name in (*Settings.model_fields, "pythonpath", "virtual_env", "uv_project_environment"):
@@ -118,6 +135,36 @@ def main():
                 settings = json.load(response)
                 assert settings["values"]["wechat_allowlist"] == []
                 assert not settings["values"]["llm_api_key_configured"]
+            if phase == 9:
+
+                def content_request(path, method, body):
+                    request = urllib.request.Request(
+                        base + path,
+                        data=json.dumps(body).encode(),
+                        method=method,
+                        headers={
+                            "Origin": base,
+                            "X-WeChat-Agent": "1",
+                            "Content-Type": "application/json",
+                        },
+                    )
+                    with urllib.request.urlopen(request) as response:
+                        return json.load(response)
+
+                doc = content_request(
+                    "/api/knowledge/documents",
+                    "POST",
+                    {"name": "synthetic.md", "content": "桂花乌龙茶18元。"},
+                )
+                from urllib.parse import quote
+
+                with urllib.request.urlopen(
+                    base + "/api/knowledge/search?q=" + quote("乌龙茶")
+                ) as response:
+                    assert json.load(response)["items"]
+                content_request("/api/knowledge/documents/" + doc["id"], "DELETE", {})
+                with urllib.request.urlopen(base + "/api/memories/contacts") as response:
+                    assert json.load(response)["items"] == []
             request = urllib.request.Request(
                 base + "/api/diagnostics",
                 data=b"{}",
@@ -132,7 +179,7 @@ def main():
     write_private(
         args.output / "report.json",
         {
-            "phase": 6,
+            "phase": phase,
             "plan_version": "v5",
             "platform": "macOS" if mac else "Windows",
             "foundation": adapter,
@@ -140,11 +187,13 @@ def main():
             "mode": "clean_source_no_account",
             "python": platform.python_version(),
             "architecture": platform.machine(),
+            "system": platform.platform(),
             "native_build_self_test": "passed" if mac else "not_applicable",
             "http_stopped_dry_run_and_static_ui": "passed",
             "locked_install": "passed",
             "native_send": "not_tested",
             "ui_human_acceptance": "not_tested",
+            "knowledge_memory_http": "passed" if phase == 9 else "not_tested",
         },
     )
     print("clean_source_install_native_build_and_stopped_http_passed")

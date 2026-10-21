@@ -1,0 +1,38 @@
+{
+  "plan_version": "v5",
+  "updated": "2026-10-22",
+  "phase7": "implemented_pending_human_acceptance",
+  "phase8": "not_selected_out_of_scope",
+  "phase9": "implemented_pending_human_acceptance_and_video",
+  "offline": {
+    "python_tests": "passed",
+    "ruff": "passed",
+    "frontend_build": "passed",
+    "service_replay": "passed",
+    "source_archive_scan": "passed"
+  },
+  "human_gates": {
+    "windows_native_regression": "not_tested",
+    "mac_strict_g1_g2": "not_tested",
+    "windows_phase7_workbench": "not_tested",
+    "mac_phase7_workbench": "not_tested",
+    "windows_clean_install": "not_tested",
+    "mac_clean_install": "passed",
+    "video_review": "not_tested",
+    "privacy_review": "not_tested"
+  },
+  "limitations": [
+    "Mac Phase 5–6 accepted only in the explicitly authorized degraded UI mode; strict G1/G2 remain open.",
+    "Windows Phase 1–4 historical acceptance does not replace regression of the new shared features.",
+    "Offline service replay uses synthetic adapters and a deterministic local model, never native WeChat.",
+    "No real demonstration video has been recorded or reviewed."
+  ],
+  "validation_details": {
+    "python_tests_passed": 240,
+    "service_replay_cases_passed": 12,
+    "replay_mode": "offline_synthetic_only",
+    "mac_clean_install": "locked_source_install_swift_self_test_stopped_http_and_knowledge_crud",
+    "video": "not_recorded",
+    "browser_automation": "not_used"
+  }
+}

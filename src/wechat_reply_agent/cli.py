@@ -101,6 +101,24 @@ def create_adapter(settings: Settings, *, profile_required: bool):
 def parser():
     root = argparse.ArgumentParser(prog="wechat-agent", description=__doc__)
     commands = root.add_subparsers(dest="command", required=True)
+    replay = commands.add_parser(
+        "replay", help="Offline production-service replay; no WeChat/model"
+    )
+    replay.add_argument("--suite", choices=("all",), default="all")
+    replay.add_argument("--output", type=Path, required=True)
+    for name in ("verify", "package"):
+        delivery = commands.add_parser(name, help="Inspect/package existing local source and video")
+        delivery.add_argument("--root", type=Path, default=Path.cwd())
+        delivery.add_argument("--video", type=Path)
+        if name == "verify":
+            delivery.add_argument("--output", type=Path, required=True)
+        else:
+            delivery.add_argument(
+                "--output", type=Path, default=Path("dist/submission/wechat-reply-agent.zip")
+            )
+            delivery.add_argument(
+                "--draft", action="store_true", help="Explicit incomplete source-only delivery"
+            )
     serve = commands.add_parser(
         "serve", help="Loopback API and bundled workbench; initially stopped"
     )
@@ -398,6 +416,23 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     settings = None
     try:
+        if args.command == "replay":
+            from wechat_reply_agent.acceptance.replay import replay
+
+            report = replay(args.suite)
+            write_private(args.output, report)
+            print(json.dumps({"mode": "offline", "status": report["status"]}))
+            return 0 if report["status"] == "passed" else 2
+        if args.command in ("verify", "package"):
+            from wechat_reply_agent.acceptance.delivery import package, verify
+
+            if args.command == "verify":
+                report = verify(args.root.resolve(), args.video)
+                write_private(args.output, report)
+            else:
+                report = package(args.root.resolve(), args.output, args.video, args.draft)
+            print(json.dumps(report))
+            return 0 if report["source_status"] == "passed" else 2
         settings = Settings()
         if args.command == "serve":
             if settings.wechat_adapter not in ("replica", "mac_db"):
@@ -439,7 +474,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         emit("operation.stop", outcome="cancelled")
         return 130
-    output = getattr(args, "output", None)
+    output = getattr(args, "output", None) if args.command != "package" else None
     if output:
         try:
             write_private(
