@@ -1,0 +1,57 @@
+# macOS / Windows
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# IDEs and editor temporary files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Local environment and secrets; keep configuration templates
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+
+# Python environments, bytecode and tooling caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# JavaScript dependencies and tooling caches
+node_modules/
+.npm/
+.pnpm-store/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Build and test output
+dist/
+build/
+coverage/
+
+# Private runtime data, acceptance evidence and logs
+/.local/
+/data/
+/logs/
+/tmp/
+*.log
