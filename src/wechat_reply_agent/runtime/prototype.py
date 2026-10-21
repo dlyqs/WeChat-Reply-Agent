@@ -157,7 +157,7 @@ class Prototype:
             self.stop(send_result.basis)
 
     def report(self):
-        return {
+        report = {
             "phase": 5 if self.settings.wechat_adapter == "mac_db" else 2,
             "plan_version": "v5" if self.settings.wechat_adapter == "mac_db" else "v4",
             "platform": "macOS" if self.settings.wechat_adapter == "mac_db" else "Windows",
@@ -174,6 +174,13 @@ class Prototype:
             "ledger_summary": self.ledger.summary(self.scope),
             "note": "Human verification required. Summary includes earlier runs in this scope.",
         }
+        if self.settings.wechat_adapter == "mac_db":
+            report.update(
+                send_preflight=self.adapter.profile.send_preflight,
+                window_mode=self.adapter.profile.window_mode,
+                ui_checks_degraded=self.adapter.profile.send_preflight != "visual",
+            )
+        return report
 
     async def run(self, duration, max_replies, output):
         from wechat_reply_agent.cli import write_private

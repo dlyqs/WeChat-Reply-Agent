@@ -14,7 +14,8 @@ func emit(_ event: [String: Any]) {
        let string = String(data: data, encoding: .utf8) { print(string); fflush(stdout) }
 }
 func privatePNG(_ image:CGImage, path:String) throws {
-    guard FileManager.default.createFile(atPath:path,contents:nil,attributes:[.posixPermissions:0o600]),
+    guard !FileManager.default.fileExists(atPath:path),
+          FileManager.default.createFile(atPath:path,contents:nil,attributes:[.posixPermissions:0o600]),
           let destination = CGImageDestinationCreateWithURL(URL(fileURLWithPath:path) as CFURL,
               UTType.png.identifier as CFString,1,nil) else { throw fail("diagnostic_snapshot_failed") }
     CGImageDestinationAddImage(destination,image,nil)
@@ -77,16 +78,59 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var image: CGImage?
     private var failure: Error?
     private var sequence = 0
+    private var consumed = 0
     private var stream: SCStream?
+    private var boundWindow:SCWindow?
+    private var boundDisplay:SCDisplay?
+    private var boundInterval:Double = 0.25
+    private var frameCounts:[String:Int] = [:]
+    private(set) var screenshotBackend = false
+    private var explicitBackend:String?
+    var backendName:String { explicitBackend ?? (screenshotBackend ? "visible_display_crop" : "app_to_window_stream") }
     var key = ""
+    private func isCurrent(_ candidate:SCStream) -> Bool {
+        lock.lock(); defer { lock.unlock() }; return stream === candidate
+    }
+    private func install(_ active:SCStream?) -> SCStream? {
+        lock.lock(); defer { lock.unlock() }
+        let previous = stream
+        stream = active; image = nil; failure = nil; sequence += 1; consumed = sequence
+        return previous
+    }
+    private func noteFrame(_ name:String) {
+        lock.lock(); frameCounts[name,default:0] += 1; lock.unlock()
+    }
+    func frameStatistics() -> [String:Any] {
+        lock.lock(); defer { lock.unlock() }
+        return ["counts":frameCounts,"has_image":image != nil,"sequence":sequence]
+    }
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, sample.isValid, let pixel = sample.imageBuffer else { return }
+        noteFrame("callback")
+        guard isCurrent(stream) else { noteFrame("other_stream"); return }
+        guard type == .screen else { noteFrame("non_screen"); return }
+        guard sample.isValid else { noteFrame("invalid_sample"); return }
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sample,createIfNecessary:false) as? [[String:Any]],
+              let raw = attachments.first?[SCStreamFrameInfo.status.rawValue] as? NSNumber,
+              let status = SCFrameStatus(rawValue:raw.intValue) else { noteFrame("invalid_metadata"); return }
+        noteFrame("status_\(status.rawValue)")
+        if status == .idle {
+            // ScreenCaptureKit reports an unchanged surface without another image.
+            // It can refresh only an existing complete frame from this stream.
+            lock.lock(); if self.stream === stream && image != nil { sequence += 1 }; lock.unlock()
+            return
+        }
+        guard status == .complete, let pixel = sample.imageBuffer else {
+            lock.lock(); if self.stream === stream { image = nil }; lock.unlock()
+            return
+        }
+        noteFrame("complete_pixels")
         let input = CIImage(cvPixelBuffer: pixel)
         guard let frame = context.createCGImage(input, from: input.extent) else { return }
-        lock.lock(); image = frame; sequence += 1; lock.unlock()
+        lock.lock(); if self.stream === stream { image = frame; sequence += 1 }; lock.unlock()
     }
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        lock.lock(); failure = error; lock.unlock()
+        guard isCurrent(stream) else { return }
+        lock.lock(); if self.stream === stream { failure = error }; lock.unlock()
     }
     func serial() -> Int { lock.lock(); defer { lock.unlock() }; return sequence }
     func latest() throws -> CGImage? {
@@ -94,8 +138,67 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         if let failure { throw failure }
         return image
     }
-    func start(window: SCWindow, display: SCDisplay, interval: Double) async throws {
+    func nextImage() throws -> CGImage? {
+        lock.lock(); defer { lock.unlock() }
+        if let failure { throw failure }
+        guard sequence > consumed, let image else { return nil }
+        consumed = sequence
+        return image
+    }
+    private func storeScreenshot(_ frame:CGImage) {
+        lock.lock(); image = frame; sequence += 1; lock.unlock()
+    }
+    func freshScreenshot() async throws -> CGImage? {
+        guard let window = boundWindow, let display = boundDisplay,
+              let owner = window.owningApplication else { throw fail("capture_not_started") }
+        try requireUnobscured(window,owner.processID)
+        let config = SCStreamConfiguration()
+        config.width = Int(window.frame.width); config.height = Int(window.frame.height)
+        config.showsCursor = false
+        config.sourceRect = CGRect(x:window.frame.minX-display.frame.minX,
+            y:window.frame.minY-display.frame.minY,width:window.frame.width,height:window.frame.height)
+        // Match the Windows screen-grab approach: capture the visible desktop crop.
+        // Foreground/occlusion checks above are mandatory; this is never background UI input.
+        let filter = explicitBackend == "window" ? SCContentFilter(desktopIndependentWindow:window) : SCContentFilter(display:display,excludingWindows:[])
+        if explicitBackend == "window" { config.sourceRect = .zero }
+        let frame = try await SCScreenshotManager.captureImage(contentFilter:filter,configuration:config)
+        guard !isBlank(pixels(frame)) else { return nil }
+        storeScreenshot(frame)
+        return frame
+    }
+    func refresh() async throws {
+        guard let window = boundWindow, let display = boundDisplay else { throw fail("capture_not_started") }
+        await stop()
+        try await start(window:window,display:display,interval:boundInterval,backend:explicitBackend)
+    }
+    func start(window: SCWindow, display: SCDisplay, interval: Double, backend:String? = nil) async throws {
         guard let app = window.owningApplication else { throw NSError(domain:"capture",code:1) }
+        boundWindow = window; boundDisplay = display; boundInterval = interval
+        explicitBackend = backend
+        screenshotBackend = false
+        if let backend {
+            if backend != "stream" {
+                guard try await freshScreenshot() != nil else { throw fail("no_frame_after_filter_refresh") }
+                screenshotBackend = true
+                emit(["type":"capture_backend","backend":backend]); return
+            }
+            let config = SCStreamConfiguration()
+            config.width = Int(window.frame.width); config.height = Int(window.frame.height)
+            config.showsCursor = false
+            config.minimumFrameInterval = CMTime(seconds:interval,preferredTimescale:600)
+            let active = SCStream(filter:SCContentFilter(desktopIndependentWindow:window),configuration:config,delegate:self)
+            _ = install(active)
+            try active.addStreamOutput(self,type:.screen,sampleHandlerQueue:DispatchQueue(label:"wechat.diagnostic.frames"))
+            try await active.startCapture()
+            emit(["type":"capture_backend","backend":"stream"]); return
+        }
+        if let frame = try? await freshScreenshot() {
+            screenshotBackend = true
+            emit(["type":"capture_backend","backend":"visible_display_crop"])
+            _ = frame
+            return
+        }
+        emit(["type":"capture_backend","backend":"app_to_window_stream"])
         let config = SCStreamConfiguration()
         config.width = Int(window.frame.width); config.height = Int(window.frame.height)
         config.showsCursor = false
@@ -107,14 +210,26 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         // Direct single-window streams and one-shot screenshots omit this WeChat window.
         let initial = SCContentFilter(display:display, including:[app], exceptingWindows:[])
         let active = SCStream(filter:initial, configuration:config, delegate:self)
-        stream = active
+        _ = install(active)
         try active.addStreamOutput(self, type:.screen, sampleHandlerQueue:DispatchQueue(label:"wechat.frames"))
         try await active.startCapture()
         try await Task.sleep(for:.milliseconds(250))
         try await active.updateContentFilter(SCContentFilter(display:display, including:[window]))
         try await Task.sleep(for:.milliseconds(550))
     }
-    func stop() async { if let stream { try? await stream.stopCapture() }; stream = nil }
+    func stop() async { if let previous = install(nil) { try? await previous.stopCapture() } }
+    @available(macOS 15.2, *)
+    func startDiagnostic(filter:SCContentFilter,size:CGSize,recording:SCRecordingOutput) async throws {
+        let config = SCStreamConfiguration()
+        config.width = Int(size.width); config.height = Int(size.height)
+        config.showsCursor = false; config.capturesAudio = false
+        config.minimumFrameInterval = CMTime(seconds:0.25,preferredTimescale:600)
+        let active = SCStream(filter:filter,configuration:config,delegate:self)
+        screenshotBackend = false; _ = install(active)
+        try active.addStreamOutput(self,type:.screen,sampleHandlerQueue:DispatchQueue(label:"wechat.picker.frames"))
+        try active.addRecordingOutput(recording)
+        try await active.startCapture()
+    }
 }
 
 #if !LIBRARY
@@ -126,10 +241,30 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         do { try validateArguments(Array(CommandLine.arguments.dropFirst())) }
         catch { emit(["type":"error", "reason":error.localizedDescription]); exit(2) }
         if command == "doctor" { doctor(); return }
+        if command == "session-check" {
+            do { try checkWeChatSession() } catch {
+                emit(["type":"error", "reason":error.localizedDescription]); exit(2)
+            }
+            return
+        }
         if command == "focus" {
             do { try await focusWeChat() } catch {
                 emit(["type":"error", "reason":error.localizedDescription]); exit(2)
             }
+            return
+        }
+        if command == "capture-check" {
+            do { try await checkWindowCapture() } catch {
+                emit(["type":"error","reason":error.localizedDescription]); exit(2)
+            }
+            return
+        }
+        if command == "capture-picker" {
+            if #available(macOS 15.2, *) {
+                do { try await checkPickerCapture() } catch {
+                    emit(["type":"error","reason":error.localizedDescription]); exit(2)
+                }
+            } else { emit(["type":"error","reason":"capture_picker_requires_macos_15_2"]); exit(2) }
             return
         }
         if command == "send" {
@@ -199,9 +334,10 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
                     let fresh = CaptureSession(); session = fresh
                     try await fresh.start(window:window, display:display, interval:interval)
                     fresh.key = key; previousPixels = []; previousLines = []; panelX = nil
-                    emit(["type":"capture_ready", "backend":"SCStream_app_to_window", "window_id":window.windowID])
+                    emit(["type":"capture_ready", "backend":fresh.backendName, "window_id":window.windowID])
                 }
                 var newest = try session?.latest()
+                if session?.screenshotBackend == true { newest = try await session?.freshScreenshot() }
                 if newest == nil {
                     for _ in 0..<30 {
                         try await Task.sleep(for:.milliseconds(50))

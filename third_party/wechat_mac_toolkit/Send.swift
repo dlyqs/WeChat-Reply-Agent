@@ -18,10 +18,12 @@ func validateArguments(_ args:[String]) throws {
     let values:Set<String>
     var flags:Set<String> = []
     switch command {
+    case "capture-check": values = ["--chat","--pid","--window-mode","--window-width","--window-height","--capture-backend","--snapshot"]
+    case "capture-picker": values = ["--chat","--pid","--window-mode","--snapshot"]
     case "read": values = ["--chat","--snapshot","--composer-top"]
     case "watch": values = ["--chat","--snapshot","--composer-top","--seconds","--interval"]
-    case "send": values = ["--chat","--text","--text-file","--id","--composer-top","--state-dir","--send-key","--pid","--window-width","--window-height"]; flags = ["--dry-run"]
-    case "focus": values = ["--pid","--window-width","--window-height"]
+    case "send": values = ["--chat","--text","--text-file","--id","--composer-top","--state-dir","--send-key","--pid","--window-width","--window-height","--window-mode","--preflight"]; flags = ["--dry-run"]
+    case "focus","session-check": values = ["--pid","--window-width","--window-height","--window-mode","--chat"]
     case "help","doctor","self-test": values = []
     default: throw fail("unknown_command")
     }
@@ -39,16 +41,22 @@ func validateArguments(_ args:[String]) throws {
 func printUsage() {
     print("""
     wechat-ui doctor
+    wechat-ui capture-check --pid BOUND_PID --chat 'Exact title' --window-mode main|independent
+                            [--capture-backend display|window|stream] [--snapshot /private/path/prefix]
+    wechat-ui capture-picker --pid BOUND_PID --chat 'Exact title' --window-mode independent --snapshot /private/path/prefix
     wechat-ui focus --pid BOUND_PID --window-width POINTS --window-height POINTS
+    wechat-ui session-check --pid BOUND_PID
     wechat-ui read --chat 'Exact title' [--snapshot /path/image.png]
     wechat-ui watch --chat 'Exact title' [--seconds 30] [--interval 0.5]
     wechat-ui send --chat 'Exact title' --text 'Single-line text' --id UNIQUE_ID
                    --composer-top 0.70 [--send-key enter|cmd-enter] [--dry-run]
+                   [--window-mode main|independent] [--preflight visual|ax-window-db]
                    [--state-dir .wechat-ui-state]
     wechat-ui self-test
 
     Open the intended chat manually first. No search, login automation or LLM.
     send requires calibrated --composer-top (input area's top / window height).
+    ax-window-db explicitly skips draft/OCR/occlusion checks and requires an independent window.
     A repeated --id never silently sends again. Failed verification is not delivery.
     Do not interact with WeChat while send runs. Standard green outgoing bubbles only.
     """)
@@ -106,11 +114,18 @@ func targetWindow() async throws -> (SCWindow, SCDisplay) {
     return (w,d)
 }
 func waitImage(_ session:CaptureSession) async throws -> CGImage {
-    let previous = session.serial()
-    for _ in 0..<40 {
-        if session.serial() > previous, let image = try session.latest() { return image }
-        try await Task.sleep(for:.milliseconds(50))
+    if session.screenshotBackend {
+        guard let frame = try await session.freshScreenshot() else { throw fail("no_frame_after_filter_refresh") }
+        return frame
     }
+    for attempt in 0..<2 {
+        if attempt == 1 { try await session.refresh() }
+        for _ in 0..<40 {
+            if let image = try session.nextImage() { return image }
+            try await Task.sleep(for:.milliseconds(50))
+        }
+    }
+    emit(["type":"capture_not_ready","statistics":session.frameStatistics()])
     throw fail("no_frame_after_filter_refresh")
 }
 func crop(_ image:CGImage,_ rect:CGRect) throws -> CGImage {
@@ -196,35 +211,73 @@ func axAttribute(_ element:AXUIElement, _ name:CFString) -> CFTypeRef? {
     guard AXUIElementCopyAttributeValue(element,name,&value) == .success else { return nil }
     return value
 }
-// This is an explicit preparation step, separate from the read-only send preflight.
-// It never searches chats, changes a draft, injects a key or modifies another app.
-func focusWeChat() async throws {
+func accountSecurityNotice(_ text:String) -> Bool {
+    normalized(text).lowercased().contains(normalized("For account security, log in again.").lowercased())
+}
+func requireNoAccountSecurityNotice(_ pid:pid_t) throws {
+    guard NSRunningApplication(processIdentifier:pid)?.bundleIdentifier == "com.tencent.xinWeChat" else { throw fail("process_binding_changed") }
+    let root = AXUIElementCreateApplication(pid)
+    guard let windows = axAttribute(root,kAXWindowsAttribute as CFString) as? [AXUIElement] else { return }
+    var budget = 120
+    func texts(_ element:AXUIElement,depth:Int) -> [String] {
+        guard budget > 0, depth <= 6 else { return [] }
+        budget -= 1
+        var result = [kAXTitleAttribute,kAXValueAttribute,kAXDescriptionAttribute].compactMap {
+            axAttribute(element,$0 as CFString) as? String
+        }
+        for child in axAttribute(element,kAXChildrenAttribute as CFString) as? [AXUIElement] ?? [] {
+            result += texts(child,depth:depth+1)
+        }
+        return result
+    }
+    for window in windows {
+        if accountSecurityNotice(texts(window,depth:0).joined(separator:" ")) {
+            throw fail("wechat_account_security_prompt")
+        }
+    }
+}
+func boundMainWindow(calibrated:Bool) throws -> (pid_t,NSRunningApplication,AXUIElement) {
     guard !screenLocked() else { throw fail("screen_locked") }
     guard AXIsProcessTrusted() else { throw fail("accessibility_permission_required") }
     guard let pid = Int32(option("--pid","")),
           let app = NSRunningApplication(processIdentifier:pid),
-          app.bundleIdentifier == "com.tencent.xinWeChat",
-          let width = Double(option("--window-width","")),
-          let height = Double(option("--window-height","")) else { throw fail("process_binding_changed") }
+          app.bundleIdentifier == "com.tencent.xinWeChat" else { throw fail("process_binding_changed") }
+    let width = Double(option("--window-width","")),height = Double(option("--window-height",""))
+    let mode = try windowMode()
+    guard (width == nil) == (height == nil), !calibrated || width != nil else { throw fail("calibrated_window_size_changed") }
     let root = AXUIElementCreateApplication(pid)
+    try requireNoAccountSecurityNotice(pid)
     guard let windows = axAttribute(root,kAXWindowsAttribute as CFString) as? [AXUIElement] else { throw fail("main_window_unavailable") }
     let matches = windows.filter { window in
         guard let title = axAttribute(window,kAXTitleAttribute as CFString) as? String,
-              ["Weixin","WeChat","微信"].contains(title),
+              matchesWindowTitle(title,mode:mode,chat:option("--chat","")),
               let raw = axAttribute(window,kAXSizeAttribute as CFString),
               CFGetTypeID(raw) == AXValueGetTypeID() else { return false }
         var size = CGSize.zero
-        return AXValueGetValue(raw as! AXValue,.cgSize,&size) && size.width == width && size.height == height
+        guard AXValueGetValue(raw as! AXValue,.cgSize,&size) else { return false }
+        if let width,let height { return size.width == width && size.height == height }
+        return size.width >= (mode == .main ? 600 : 360) && size.height >= 450
     }
     guard matches.count == 1 else { throw fail("calibrated_main_window_not_unique") }
-    let window = matches[0]
+    return (pid,app,matches[0])
+}
+// Read-only session/window evidence; presence alone is not proof of authentication.
+func checkWeChatSession() throws {
+    _ = try boundMainWindow(calibrated:false)
+    emit(["type":"session_window_ready","authentication_verified":false,"input_events":0])
+}
+// Explicit preparation; never searches chats, types or modifies another app.
+func focusWeChat() async throws {
+    let (pid,app,window) = try boundMainWindow(calibrated:true)
     if axAttribute(window,kAXMinimizedAttribute as CFString) as? Bool == true {
         guard AXUIElementSetAttributeValue(window,kAXMinimizedAttribute as CFString,kCFBooleanFalse) == .success else { throw fail("main_window_restore_failed") }
     }
     guard app.activate(options:[]) else { throw fail("wechat_activation_failed") }
     guard AXUIElementPerformAction(window,kAXRaiseAction as CFString) == .success else { throw fail("main_window_raise_failed") }
     for _ in 0..<20 {
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+           let focused = axAttribute(AXUIElementCreateApplication(pid),kAXFocusedWindowAttribute as CFString),
+           CFEqual(focused,window) {
             emit(["type":"wechat_focused","persistent_topmost":false]); return
         }
         try await Task.sleep(for:.milliseconds(100))
@@ -238,20 +291,56 @@ func clickPoint(_ point:CGPoint) throws {
         usleep(35_000)
     }
 }
-func typeUnicode(_ text:String,pid:pid_t) throws {
-    let units = Array(text.utf16)
-    var offset = 0
-    while offset < units.count {
-        try requireFrontmost(pid)
-        var end = min(offset+16,units.count)
-        if end < units.count && (0xD800...0xDBFF).contains(units[end-1]) { end -= 1 }
-        let part = Array(units[offset..<end])
-        for down in [true,false] {
-            guard let e = CGEvent(keyboardEventSource:nil,virtualKey:0,keyDown:down) else { throw fail("keyboard_event_failed") }
-            part.withUnsafeBufferPointer { e.keyboardSetUnicodeString(stringLength:part.count,unicodeString:$0.baseAddress!) }
-            e.postToPid(pid)
+final class ClipboardLease {
+    let pasteboard:NSPasteboard, original:[[NSPasteboard.PasteboardType:Data]], originalChange:Int
+    var installedChange:Int?
+    init(pasteboard:NSPasteboard = .general) throws {
+        self.pasteboard = pasteboard
+        originalChange = pasteboard.changeCount
+        var saved:[[NSPasteboard.PasteboardType:Data]] = []
+        let items = pasteboard.pasteboardItems ?? []
+        guard !items.isEmpty || (pasteboard.types ?? []).isEmpty else { throw fail("clipboard_snapshot_unavailable") }
+        for item in items {
+            var record:[NSPasteboard.PasteboardType:Data] = [:]
+            for type in item.types {
+                guard let data = item.data(forType:type) else { throw fail("clipboard_snapshot_unavailable") }
+                record[type] = data
+            }
+            saved.append(record)
         }
-        usleep(25_000); offset = end
+        guard pasteboard.changeCount == originalChange else { throw fail("clipboard_changed_before_paste") }
+        original = saved
+    }
+    func install(_ text:String) throws {
+        guard installedChange == nil, pasteboard.changeCount == originalChange else { throw fail("clipboard_changed_before_paste") }
+        pasteboard.clearContents()
+        installedChange = pasteboard.changeCount
+        guard pasteboard.setString(text,forType:.string) else { throw fail("clipboard_write_failed") }
+        installedChange = pasteboard.changeCount
+    }
+    @discardableResult func restore() -> String {
+        guard let installed = installedChange else { return "unchanged" }
+        installedChange = nil
+        guard pasteboard.changeCount == installed else { return "preserved_new_content" }
+        let items = original.map { record in
+            let item = NSPasteboardItem()
+            for (type,data) in record { item.setData(data,forType:type) }
+            return item
+        }
+        pasteboard.clearContents()
+        return items.isEmpty || pasteboard.writeObjects(items) ? "restored" : "restore_failed"
+    }
+}
+func pasteOnce(_ text:String,pid:pid_t,clipboard:ClipboardLease) throws {
+    try requireFrontmost(pid)
+    try requireNoAccountSecurityNotice(pid)
+    try clipboard.install(text)
+    try requireFrontmost(pid)
+    for down in [true,false] {
+        guard let event = CGEvent(keyboardEventSource:nil,virtualKey:9,keyDown:down) else { throw fail("keyboard_event_failed") }
+        event.flags = .maskCommand
+        event.postToPid(pid)
+        usleep(25_000)
     }
 }
 func enter(_ pid:pid_t,command:Bool) throws {
@@ -267,14 +356,46 @@ func validMessage(_ value:String) -> Bool {
     !value.trimmingCharacters(in:.whitespaces).isEmpty && value.unicodeScalars.count <= 200 && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
 }
 func testSendUtilities() {
+    precondition(matchesWindowTitle("WeChat",mode:.main,chat:"friend"))
+    precondition(!matchesWindowTitle("friend",mode:.main,chat:"friend"))
+    precondition(matchesWindowTitle("friend",mode:.independent,chat:"friend"))
+    precondition(!matchesWindowTitle("other",mode:.independent,chat:"friend"))
+    precondition(!matchesWindowTitle("WeChat",mode:.independent,chat:"WeChat"))
+    let blackContext = CGContext(data:nil,width:80,height:80,bitsPerComponent:8,bytesPerRow:0,
+                                space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
+    blackContext.setFillColor(NSColor.black.cgColor)
+    blackContext.fill(CGRect(x:0,y:0,width:80,height:80))
+    precondition(!diagnosticTitleVerified(blackContext.makeImage()!,chat:"synthetic"))
     precondition(normalized("Ａ B　你好") == "AB你好")
-    precondition(validMessage("本地测试 123") && !validMessage("a\nb") && !validMessage(""))
+    precondition(validMessage("今天过得怎么样？") && !validMessage("a\nb") && !validMessage(""))
     precondition(digest("a") == digest("a") && digest("a") != digest("b"))
     let screen = CGRect(x:-1920,y:-1080,width:1920,height:1080)
     let panel = CGRect(x:-1800,y:-80,width:1600,height:80)
     precondition(clearDockSurface(screen,panel:panel,target:CGRect(x:-1900,y:-1000,width:880,height:640)))
     precondition(!clearDockSurface(screen,panel:panel,target:CGRect(x:-1900,y:-700,width:880,height:640)))
     precondition(!clearDockSurface(panel,panel:panel,target:CGRect(x:-1900,y:-1000,width:880,height:640)))
+    precondition(accountSecurityNotice("Tip For account security, log in again. OK"))
+    precondition(!accountSecurityNotice("Tip Please check the chat. OK"))
+    // Use a private named pasteboard: self-test never changes the user's clipboard.
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    pasteboard.setString("original",forType:.string)
+    do {
+        let clipboard = try ClipboardLease(pasteboard:pasteboard)
+        try clipboard.install("中文 punctuation  😀")
+        precondition(pasteboard.string(forType:.string) == "中文 punctuation  😀")
+        precondition(clipboard.restore() == "restored")
+        precondition(pasteboard.string(forType:.string) == "original")
+        let changed = try ClipboardLease(pasteboard:pasteboard)
+        try changed.install("synthetic")
+        pasteboard.clearContents(); pasteboard.setString("new user copy",forType:.string)
+        precondition(changed.restore() == "preserved_new_content")
+        precondition(pasteboard.string(forType:.string) == "new user copy")
+        pasteboard.clearContents()
+        let empty = try ClipboardLease(pasteboard:pasteboard)
+        try empty.install("temporary")
+        precondition(empty.restore() == "restored" && (pasteboard.types ?? []).isEmpty)
+    } catch { preconditionFailure("private_pasteboard_self_test_failed") }
 }
 // Journals intentionally contain hashes/status only; no chat names or message text.
 final class Journal {
@@ -311,7 +432,15 @@ func sendMessage() async throws {
     guard !chat.isEmpty, validMessage(text), !id.isEmpty,
           let top = Double(option("--composer-top","")), top.isFinite, top >= 0.45, top <= 0.88,
           ["enter","cmd-enter"].contains(key) else { throw fail("send_requires_chat_text_id_and_calibrated_composer_top; text_must_be_single_line_and_at_most_200_characters") }
+    let preflight = option("--preflight","visual")
+    guard ["visual","ax-window-db"].contains(preflight) else { throw fail("invalid_send_preflight") }
+    if preflight == "ax-window-db" {
+        try await sendWithoutCapture(chat:chat,text:text,id:id,top:top,key:key,dry:dry)
+        return
+    }
     guard CGPreflightScreenCaptureAccess(), AXIsProcessTrusted() else { throw fail("screen_recording_and_accessibility_permissions_required") }
+    guard let requestedPID = Int32(option("--pid","")) else { throw fail("process_binding_changed") }
+    try requireNoAccountSecurityNotice(requestedPID)
     let journal = try Journal(directory:option("--state-dir",".wechat-ui-state"),id:id,signature:digest(chat+"\0"+text))
     if let status = try journal.existing() {
         if status == "sent_ui_verified" { emit(["type":"already_sent","id":id]); return }
@@ -345,7 +474,9 @@ func sendMessage() async throws {
         try requireUnobscured(readyToType, owner.processID)
         let point = CGPoint(x:window.frame.minX+left+80,y:window.frame.minY+Double(image.height)*top+30)
         try clickPoint(point); try await Task.sleep(for:.milliseconds(100))
-        try typeUnicode(text,pid:owner.processID)
+        let clipboard = try ClipboardLease()
+        defer { emit(["type":"clipboard_cleanup","status":clipboard.restore()]) }
+        try pasteOnce(text,pid:owner.processID,clipboard:clipboard)
         var typed = false
         for _ in 0..<8 {
             try await Task.sleep(for:.milliseconds(300))
@@ -360,10 +491,12 @@ func sendMessage() async throws {
         image = try await waitImage(session); left = try chatLeft(image,chat:chat)
         guard try composerText(image,left:left,top:top) == text else { throw fail("draft_changed_before_send") }
         try requireFrontmost(owner.processID)
+        try requireNoAccountSecurityNotice(owner.processID)
         try journal.save("dispatching")
         try enter(owner.processID,command:key == "cmd-enter")
         for _ in 0..<10 {
             try await Task.sleep(for:.milliseconds(400))
+            try requireNoAccountSecurityNotice(owner.processID)
             image = try await waitImage(session); left = try chatLeft(image,chat:chat)
             if try composerEmpty(image,left:left,top:top) && outgoingContains(image,left:left,top:top,text:text) {
                 try journal.save("sent_ui_verified")

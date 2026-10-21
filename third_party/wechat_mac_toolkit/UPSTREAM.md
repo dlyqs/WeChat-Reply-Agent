@@ -34,6 +34,24 @@ Local patches:
 - Temporary-copy bootstrap bounds child lifetime and records restoration on all exits.
 - Explicit prepared-copy resume checks pinned executable hashes and account root,
   including an authorized relocated copy, without copying or signing it again.
+- Input now follows the pinned Windows adapter's clipboard-paste pattern: one Cmd+V,
+  exact draft readback, one Enter. A clipboard lease restores the original only if no
+  other writer has changed it; self-tests use a private named pasteboard.
+- Read-only AX session checks precede polling/input. A known account-security prompt,
+  when accessible through AX, produces a stable code for the application's durable
+  stop. No login automation or account-security guarantees are implemented.
+- The explicit `ax-window-db` mode selects one independent AX window by exact bound
+  title/size, checks focused-window identity and geometry at the input boundaries,
+  pastes once and presses the configured send key once. It skips screenshots, draft
+  and occlusion checks; the application records degraded assurance and requires an
+  additional prototype opt-in. Native key dispatch is never delivery confirmation.
+- `WindowCapture.swift` and `DegradedSend.swift` are original project extensions under
+  the root LICENSE. Existing upstream files and modifications retain MIT. The diagnostic
+  captures display/window/direct-stream frames or a user-selected system-picker stream,
+  validates exact title evidence and records a short silent video. It rejects wrong-window
+  selection, empty/black or mismatching frames; no input, client modification or gate change.
+- Capture backend labels match the active backend; diagnostic refresh preserves the
+  selected backend. Existing diagnostic PNGs are not overwritten.
 
 Application limits: Phase 5 only, manually selected single friend, <=200 Python
 characters, single line, no control characters. OCR must reproduce the full draft
@@ -45,4 +63,6 @@ Resolved runtime blocker: Apple LLDB 1703 CreateTarget crashed in Mach-O symbol
 parsing on the current macOS 27 host, including a system true target. Application
 bootstrap recorded the crash, restored the original app and blocked repeated
 initialization until developer tools were repaired. Updated LLDB 2103 passed synthetic
-capture and real local key verification. Native send acceptance is still pending.
+capture and real local key verification. The first fixed send was DB/recipient-confirmed,
+followed by an account-security logout. The clipboard revision needs native stability
+acceptance; it is not evidence of avoiding account restrictions.

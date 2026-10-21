@@ -6,6 +6,7 @@ import time
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
 from wechat_reply_agent.adapters.wechat.mac_bridge import MacBridge, environment
+from wechat_reply_agent.adapters.wechat.mac_security import require_security_clear
 from wechat_reply_agent.domain.messages import (
     AdapterCapabilities,
     ConversationRef,
@@ -34,6 +35,11 @@ class MacAdapter:
 
     def health(self):
         env = environment(self.settings)
+        degraded_ui = self.profile is not None and self.profile.send_preflight == "ax-window-db"
+        if self.profile:
+            env.update(
+                send_preflight=self.profile.send_preflight, window_mode=self.profile.window_mode
+            )
         ready = (
             env.get("platform") == "Darwin"
             and env.get("architecture") == "arm64"
@@ -42,16 +48,20 @@ class MacAdapter:
                 for k in (
                     "sqlcipher_available",
                     "bridge_built",
-                    "screen_recording",
                     "accessibility",
                     "wechat_running",
                 )
             )
+            and (degraded_ui or env.get("screen_recording"))
             and not env.get("screen_locked", True)
         )
         return Health(
             healthy=bool(ready),
-            reason="environment_ready_connect_required" if ready else "environment_unavailable",
+            reason="mac_account_security_stop_active"
+            if env.get("account_security_stop")
+            else "environment_ready_connect_required"
+            if ready
+            else "environment_unavailable",
             environment=env,
             capabilities=AdapterCapabilities(
                 profile="mac-db-v1",
@@ -59,7 +69,11 @@ class MacAdapter:
                 direction_basis="per-shard Name2Id mapping",
                 send_confirmation="new exact self record: local_db_confirmed; recipient unverified",
                 window_conditions=(
-                    "manual preselected single friend; automatically raise the bound main window; "
+                    "explicit degraded mode; unique focused independent AX window; "
+                    "draft, pasted text and occlusion unverified; DB confirmation only; "
+                    "<=200 single-line characters"
+                    if degraded_ui
+                    else "manual preselected single friend; raise the bound main window; "
                     "frontmost unobscured main window; "
                     "<=200 characters, single line, exact OCR draft; no navigation"
                 ),
@@ -87,11 +101,13 @@ class MacAdapter:
             raise AdapterError("mac_keys_must_be_in_private_data_dir")
 
     def connect(self):
+        require_security_clear(self.settings)
         self.validate_profile()
         if self._bridge is None:
             self._bridge = MacBridge(self.settings, self.profile)
         try:
             result = self._bridge.connect()
+            self._bridge.assert_session()
             self.connected, self.degraded = True, False
             return result
         except Exception as exc:
@@ -122,8 +138,14 @@ class MacAdapter:
         )
 
     def _ready(self):
+        require_security_clear(self.settings)
         if not self.connected or self.degraded:
             raise AdapterError("mac_not_connected")
+        try:
+            self._bridge.assert_session()
+        except AdapterError:
+            self.degraded = True
+            raise
 
     def normalize(self, ref, row):
         shard, local_id = row_key(row)
@@ -251,6 +273,8 @@ class MacAdapter:
         from wechat_reply_agent.cli import write_private
 
         try:
+            if intent.mode != "dry-run":
+                require_security_clear(self.settings)
             ref = self.resolve_conversation(intent.conversation.contact_alias)
             if ref != intent.conversation:
                 raise AdapterError("target_mismatch")
@@ -295,6 +319,9 @@ class MacAdapter:
                 "outbox_id": intent.outbox_id,
                 "baseline": baseline,
                 "status": "prepared",
+                "send_preflight": self.profile.send_preflight,
+                "window_mode": self.profile.window_mode,
+                "ui_checks_degraded": self.profile.send_preflight != "visual",
             }
             write_private(path, record)
         except Exception as exc:

@@ -127,6 +127,11 @@ def parser():
         "--prepared-app", type=Path, help="Exact authorized copy path; requires --resume-prepared"
     )
     bootstrap.add_argument("--output", type=Path, required=True)
+    reset = commands.add_parser(
+        "mac-security-reset", help="Record manual login confirmation; never log in or send"
+    )
+    reset.add_argument("--confirm-manual-login", action="store_true")
+    reset.add_argument("--output", type=Path, required=True)
     probe = commands.add_parser("probe", help="User-operated current test single-chat probes")
     actions = probe.add_subparsers(dest="action", required=True)
     read = actions.add_parser("read", help="Read visible messages; never scroll or select a chat")
@@ -146,6 +151,11 @@ def parser():
     prototype.add_argument("--mode", choices=("dry-run", "live"), default="dry-run")
     prototype.add_argument("--duration", type=int, choices=range(1, 1801), default=600)
     prototype.add_argument("--max-replies", type=int, choices=range(1, 4), default=3)
+    prototype.add_argument(
+        "--allow-degraded-mac-ui",
+        action="store_true",
+        help="Explicit flow-only Mac run without visual draft checks; does not pass G1/G2",
+    )
     prototype.add_argument(
         "--output", type=Path, default=Path(".local/acceptance/phase-2/prototype.json")
     )
@@ -173,8 +183,19 @@ def execute(args, settings: Settings, adapter):
         write_private(args.output, report)
         return 0 if health.healthy else 2
     with probe_lock(settings.data_dir):
+        if args.command == "mac-security-reset":
+            from wechat_reply_agent.adapters.wechat.mac_security import clear_security_stop
+
+            if settings.wechat_adapter != "mac_db":
+                raise AdapterError("mac_db_adapter_required")
+            result = clear_security_stop(settings, confirmed=args.confirm_manual_login)
+            write_private(args.output, result)
+            return 0
         if args.command == "mac-bootstrap":
             from wechat_reply_agent.adapters.wechat.mac_bootstrap import bootstrap
+            from wechat_reply_agent.adapters.wechat.mac_security import require_security_clear
+
+            require_security_clear(settings)
 
             if not args.state_dir.resolve().is_relative_to(settings.data_dir.resolve()):
                 raise AdapterError("bootstrap_must_use_private_data_dir")
@@ -194,10 +215,21 @@ def execute(args, settings: Settings, adapter):
             from wechat_reply_agent.runtime.prototype import Prototype
             from wechat_reply_agent.storage.prototype import Ledger
 
+            if (
+                getattr(args, "allow_degraded_mac_ui", False)
+                and settings.wechat_adapter != "mac_db"
+            ):
+                raise AdapterError("degraded_ui_flag_is_mac_only")
             if settings.wechat_adapter == "mac_db":
-                from wechat_reply_agent.adapters.wechat.mac_acceptance import require_gate
+                from wechat_reply_agent.adapters.wechat.mac_acceptance import (
+                    require_degraded_prototype,
+                    require_gate,
+                )
 
-                require_gate(settings, adapter.profile)
+                if getattr(args, "allow_degraded_mac_ui", False):
+                    require_degraded_prototype(settings, adapter.profile)
+                else:
+                    require_gate(settings, adapter.profile)
             elif settings.wechat_adapter == "replica":
                 try:
                     gate = json.loads(
@@ -343,6 +375,10 @@ def execute(args, settings: Settings, adapter):
             "basis": "probe_started",
             "note": "Check recipient manually. No automatic retries or delivery claim.",
         }
+        if settings.wechat_adapter == "mac_db":
+            from wechat_reply_agent.adapters.wechat.mac_acceptance import context
+
+            report.update(context(adapter.profile))
         write_private(receipt, report)
         result = adapter.send_text(intent)
         report.update(result.model_dump())
@@ -396,7 +432,9 @@ def main(argv=None):
                 )
             return 0
         adapter = create_adapter(
-            settings, profile_required=args.command not in ("doctor", "resolve", "mac-bootstrap")
+            settings,
+            profile_required=args.command
+            not in ("doctor", "resolve", "mac-bootstrap", "mac-security-reset"),
         )
         return execute(args, settings, adapter)
     except (ValidationError, SettingsError):

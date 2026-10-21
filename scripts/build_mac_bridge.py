@@ -19,7 +19,10 @@ def main():
         raise SystemExit("native_apple_silicon_required")
     root = Path(__file__).resolve().parents[1] / "third_party/wechat_mac_toolkit"
     private_directory(args.output.parent)
-    sources = [root / "WeChatUI.swift", root / "Send.swift"]
+    sources = [
+        root / name
+        for name in ("WeChatUI.swift", "Send.swift", "WindowCapture.swift", "DegradedSend.swift")
+    ]
     command = [
         "/usr/bin/xcrun",
         "swiftc",

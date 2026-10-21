@@ -37,6 +37,9 @@ class Bridge:
     def connect(self):
         return {"keys": "verified"}
 
+    def assert_session(self):
+        pass
+
     def snapshot(self, username):
         return {
             "salts": self.salts.copy(),
@@ -305,7 +308,142 @@ def test_mac_import_and_doctor_are_lazy(setup, monkeypatch):
         "architecture": mac_bridge.platform.machine(),
         "python": mac_bridge.platform.python_version(),
         "macos": mac_bridge.platform.mac_ver()[0],
+        "account_security_stop": False,
     }
+
+
+def test_security_stop_blocks_connected_adapter_and_bootstrap_before_native_work(
+    setup, monkeypatch
+):
+    from wechat_reply_agent import cli
+    from wechat_reply_agent.adapters.wechat.mac_security import record_security_stop
+
+    settings, adapter, bridge = setup
+    send = intent(adapter)
+    record_security_stop(settings)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("security stop must precede native work")
+
+    monkeypatch.setattr(bridge, "connect", forbidden)
+    monkeypatch.setattr(bridge, "read", forbidden)
+    with pytest.raises(AdapterError, match="mac_account_security_stop_active"):
+        adapter.connect()
+    with pytest.raises(AdapterError, match="mac_account_security_stop_active"):
+        adapter.poll_events()
+    result = adapter.send_text(send)
+    assert result.outcome == "not_sent" and result.error == "mac_account_security_stop_active"
+    assert bridge.attempts == 0
+    monkeypatch.setattr("wechat_reply_agent.adapters.wechat.mac_bootstrap.bootstrap", forbidden)
+    with pytest.raises(AdapterError, match="mac_account_security_stop_active"):
+        cli.execute(SimpleNamespace(command="mac-bootstrap"), settings, adapter)
+
+
+def test_security_stop_doctor_does_not_launch_helper(setup, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_bridge
+    from wechat_reply_agent.adapters.wechat.mac_security import record_security_stop
+
+    settings, adapter, _ = setup
+    record_security_stop(settings)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("security-stop diagnosis is filesystem-only")
+
+    monkeypatch.setattr(mac_bridge, "run", forbidden)
+    health = adapter.health()
+    assert not health.healthy and health.reason == "mac_account_security_stop_active"
+
+
+def test_security_reset_requires_manual_confirmation_preserves_evidence_and_gates(setup):
+    from wechat_reply_agent.adapters.wechat.mac_security import (
+        clear_security_stop,
+        require_security_clear,
+        stop_path,
+    )
+
+    settings, _, _ = setup
+    marker = stop_path(settings)
+    marker.parent.mkdir()
+    marker.write_text("unknown marker format")
+    gate = settings.data_dir / "g1.json"
+    gate.write_text('{"g1":"failed"}')
+    with pytest.raises(AdapterError, match="mac_account_security_stop_active"):
+        require_security_clear(settings)
+    with pytest.raises(AdapterError, match="manual_login_confirmation_required"):
+        clear_security_stop(settings)
+    assert marker.exists()
+    result = clear_security_stop(settings, confirmed=True)
+    assert result["native_actions"] == 0 and result["gates_unchanged"]
+    assert not marker.exists() and gate.read_text() == '{"g1":"failed"}'
+    history = list((marker.parent / "security-history").glob("*.json"))
+    assert len(history) == 1
+    assert json.loads(history[0].read_text())["previous_marker"] == "unknown marker format"
+
+
+def test_native_security_notice_creates_durable_stop_before_input(setup, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_bridge
+    from wechat_reply_agent.adapters.wechat.mac_security import security_stopped
+
+    settings, adapter, _ = setup
+    bridge = mac_bridge.MacBridge(settings, adapter.profile)
+    bridge.process = {"pid": 123}
+    monkeypatch.setattr(bridge, "check", lambda: None)
+
+    def native(command, **kwargs):
+        assert command[1] == "focus", "account-security prompt must stop before paste"
+        return SimpleNamespace(
+            returncode=2,
+            stdout='{"type":"error","reason":"wechat_account_security_prompt"}',
+        )
+
+    monkeypatch.setattr(mac_bridge.subprocess, "run", native)
+    result = bridge.send_once(intent(adapter))
+    assert not result["attempted"] and security_stopped(settings)
+
+
+def test_security_stop_cannot_be_bypassed_by_an_old_passing_gate(setup):
+    from wechat_reply_agent.adapters.wechat.mac_acceptance import require_gate
+    from wechat_reply_agent.adapters.wechat.mac_security import record_security_stop
+
+    settings, adapter, _ = setup
+    record_security_stop(settings)
+    with pytest.raises(AdapterError, match="mac_account_security_stop_active"):
+        require_gate(settings, adapter.profile)
+
+
+def test_readonly_session_check_latches_security_prompt_without_activation(setup, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_bridge
+    from wechat_reply_agent.adapters.wechat.mac_security import security_stopped
+
+    settings, adapter, _ = setup
+    bridge = mac_bridge.MacBridge(settings, adapter.profile)
+    bridge.process = {"pid": 123}
+    monkeypatch.setattr(bridge, "check", lambda: None)
+
+    def native(command, **kwargs):
+        assert command[1] == "session-check"
+        assert "--text" not in command and "--text-file" not in command
+        return SimpleNamespace(
+            returncode=2,
+            stdout='{"type":"error","reason":"wechat_account_security_prompt"}',
+        )
+
+    monkeypatch.setattr(mac_bridge.subprocess, "run", native)
+    with pytest.raises(AdapterError, match="mac_session_not_ready:wechat_account_security_prompt"):
+        bridge.assert_session()
+    assert security_stopped(settings)
+
+
+def test_connect_does_not_report_connected_when_session_window_is_missing(setup, monkeypatch):
+    _, adapter, bridge = setup
+
+    def unavailable():
+        raise AdapterError("mac_session_not_ready:calibrated_main_window_not_unique")
+
+    monkeypatch.setattr(bridge, "assert_session", unavailable)
+    with pytest.raises(AdapterError, match="mac_session_not_ready"):
+        adapter.connect()
+    assert not adapter.connected and adapter.degraded and bridge.attempts == 0
 
 
 @pytest.fixture
@@ -440,6 +578,7 @@ def test_mac_gate_rejects_windows_and_wrong_binding(setup, monkeypatch):
         "platform": "macOS",
         "foundation": "mac_db",
         "binding_fingerprint": "correct",
+        "input_method": "clipboard-v1",
     }
     monkeypatch.setattr(mac_acceptance, "context", lambda profile: expected)
     monkeypatch.setattr(mac_acceptance.platform, "system", lambda: "Darwin")
@@ -448,10 +587,17 @@ def test_mac_gate_rejects_windows_and_wrong_binding(setup, monkeypatch):
         {"platform": "Windows", "foundation": "replica", "plan_version": "v4"},
         {"binding_fingerprint": "wrong"},
         {"recipient_confirmed": False},
+        {"input_method": "unicode-events"},
+        {"native_stability_verified": False},
     ):
         report = (
             expected
-            | {"g1": "passed", "recipient_confirmed": True, "fresh_messages_verified": True}
+            | {
+                "g1": "passed",
+                "recipient_confirmed": True,
+                "fresh_messages_verified": True,
+                "native_stability_verified": True,
+            }
             | invalid
         )
         write_private(path, report)
@@ -459,9 +605,103 @@ def test_mac_gate_rejects_windows_and_wrong_binding(setup, monkeypatch):
             mac_acceptance.require_gate(settings, adapter.profile)
     write_private(
         path,
-        expected | {"g1": "passed", "recipient_confirmed": True, "fresh_messages_verified": True},
+        expected
+        | {
+            "g1": "passed",
+            "recipient_confirmed": True,
+            "fresh_messages_verified": True,
+            "native_stability_verified": True,
+        },
     )
     mac_acceptance.require_gate(settings, adapter.profile)
+
+
+def test_degraded_mode_is_explicit_and_cannot_pass_formal_gates(setup, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_acceptance
+
+    settings, adapter, _ = setup
+    monkeypatch.setattr(mac_acceptance.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mac_acceptance, "context", lambda p: {})
+    with pytest.raises(AdapterError, match="explicit_degraded_profile_required"):
+        mac_acceptance.require_degraded_prototype(settings, adapter.profile)
+    profile = MacProfile.model_validate(
+        adapter.profile.model_dump()
+        | {"window_mode": "independent", "window_width": 598, "send_preflight": "ax-window-db"}
+    )
+    mac_acceptance.require_degraded_prototype(settings, profile)
+    with pytest.raises(AdapterError, match="explicit_prototype_flag"):
+        mac_acceptance.require_gate(settings, profile)
+    from wechat_reply_agent.adapters.wechat.mac_security import record_security_stop
+
+    record_security_stop(settings)
+    with pytest.raises(AdapterError, match="security_stop_active"):
+        mac_acceptance.require_degraded_prototype(settings, profile)
+
+
+def test_independent_window_never_inherits_visual_main_calibration(setup):
+    from pydantic import ValidationError
+
+    _, adapter, _ = setup
+    with pytest.raises(ValidationError, match="explicit degraded mode"):
+        MacProfile.model_validate(adapter.profile.model_dump() | {"window_mode": "independent"})
+    with pytest.raises(ValidationError, match="requires one bound independent"):
+        MacProfile.model_validate(adapter.profile.model_dump() | {"send_preflight": "ax-window-db"})
+
+
+def test_degraded_health_declares_missing_draft_assurance_without_screen_permission(
+    setup, monkeypatch
+):
+    from wechat_reply_agent.adapters.wechat import mac_db
+
+    _, adapter, _ = setup
+    env = {
+        "platform": "Darwin",
+        "architecture": "arm64",
+        "sqlcipher_available": True,
+        "bridge_built": True,
+        "screen_recording": False,
+        "accessibility": True,
+        "wechat_running": True,
+        "screen_locked": False,
+    }
+    monkeypatch.setattr(mac_db, "environment", lambda s: env.copy())
+    assert not adapter.health().healthy
+    adapter.profile = MacProfile.model_validate(
+        adapter.profile.model_dump()
+        | {"window_mode": "independent", "window_width": 598, "send_preflight": "ax-window-db"}
+    )
+    health = adapter.health()
+    assert health.healthy and "unverified" in health.capabilities.window_conditions
+    assert health.environment["send_preflight"] == "ax-window-db"
+
+
+def test_degraded_bridge_pins_same_window_mode_through_focus_preflight_and_dispatch(
+    setup, monkeypatch
+):
+    from wechat_reply_agent.adapters.wechat import mac_bridge
+
+    settings, adapter, _ = setup
+    adapter.profile = MacProfile.model_validate(
+        adapter.profile.model_dump()
+        | {"window_mode": "independent", "window_width": 598, "send_preflight": "ax-window-db"}
+    )
+    bridge = mac_bridge.MacBridge(settings, adapter.profile)
+    bridge.process = {"pid": 123}
+    monkeypatch.setattr(bridge, "check", lambda: None)
+    commands = []
+
+    def native(command, **kwargs):
+        commands.append(command)
+        assert command[command.index("--window-mode") + 1] == "independent"
+        assert command[command.index("--chat") + 1] == "Unique"
+        if command[1] == "send":
+            assert command[command.index("--preflight") + 1] == "ax-window-db"
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(mac_bridge.subprocess, "run", native)
+    assert bridge.send_once(intent(adapter))["attempted"]
+    assert [c[1] for c in commands] == ["focus", "send", "send"]
+    assert "--dry-run" in commands[1] and "--dry-run" not in commands[2]
 
 
 def test_connect_does_not_bootstrap_or_load_gui_if_profile_missing(setup):

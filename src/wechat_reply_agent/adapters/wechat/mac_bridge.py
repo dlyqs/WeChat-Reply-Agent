@@ -12,12 +12,18 @@ import time
 from pathlib import Path
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.adapters.wechat.mac_security import (
+    record_security_stop,
+    require_security_clear,
+    security_stopped,
+)
 from wechat_reply_agent.privacy import private_directory
 
 TOOLKIT = Path(__file__).resolve().parents[4] / "third_party/wechat_mac_toolkit"
 
 NATIVE_FAILURES = frozenset(
     {
+        "wechat_account_security_prompt",
         "screen_locked",
         "accessibility_permission_required",
         "screen_recording_and_accessibility_permissions_required",
@@ -38,6 +44,22 @@ NATIVE_FAILURES = frozenset(
         "composer_not_empty_or_wrong_composer_top",
         "same_text_already_visible",
         "no_frame_after_filter_refresh",
+        "capture_not_started",
+        "clipboard_snapshot_unavailable",
+        "clipboard_changed_before_paste",
+        "clipboard_write_failed",
+        "draft_verification_failed",
+        "draft_changed_before_send",
+        "window_moved_before_typing",
+        "window_moved_before_send",
+        "send_result_uncertain",
+        "keyboard_event_failed",
+        "composer_changed_before_typing",
+        "target_window_geometry_unavailable",
+        "target_window_focus_or_geometry_changed",
+        "clipboard_changed_before_send",
+        "degraded_requires_independent_window",
+        "target_window_not_unique",
     }
 )
 
@@ -139,6 +161,9 @@ def environment(settings):
         "python": platform.python_version(),
         "macos": platform.mac_ver()[0],
     }
+    env["account_security_stop"] = security_stopped(settings)
+    if env["account_security_stop"]:
+        return env
     if platform.system() != "Darwin":
         return env
     env["swift_available"] = Path("/usr/bin/swiftc").exists()
@@ -188,6 +213,7 @@ class MacBridge:
         self.process = None
 
     def connect(self):
+        require_security_clear(self.settings)
         if platform.system() != "Darwin" or platform.machine() != "arm64":
             raise AdapterError("native_apple_silicon_required")
         p = self.profile
@@ -228,6 +254,7 @@ class MacBridge:
         }
 
     def check(self):
+        require_security_clear(self.settings)
         if not self.identity or source_identity(self.profile.db_root) != self.identity:
             raise AdapterError("native_database_replaced")
         if process_binding(self.profile.app_path, self.profile.db_root) != self.process:
@@ -251,6 +278,35 @@ class MacBridge:
         )
         self.check()
         return rows
+
+    def assert_session(self):
+        """AX-only readiness check: no screenshot, activation, clipboard, or input."""
+        self.check()
+        command = [
+            str(bridge_path(self.settings).resolve()),
+            "session-check",
+            "--pid",
+            str(self.process["pid"]),
+        ]
+        if self.profile.window_width is not None and self.profile.window_height is not None:
+            command += [
+                "--window-width",
+                str(self.profile.window_width),
+                "--window-height",
+                str(self.profile.window_height),
+            ]
+        command += ["--window-mode", self.profile.window_mode]
+        if self.profile.window_mode == "independent":
+            command += ["--chat", self.profile.contacts[0].title]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            raise AdapterError("mac_session_check_unavailable") from None
+        if result.returncode:
+            code = native_failure(result)
+            if code == "wechat_account_security_prompt":
+                record_security_stop(self.settings)
+            raise AdapterError("mac_session_not_ready:" + code)
 
     def send_once(self, intent):
         from wechat_reply_agent.cli import write_private
@@ -287,8 +343,12 @@ class MacBridge:
                 p.send_key,
                 "--pid",
                 str(self.process["pid"]),
+                "--window-mode",
+                p.window_mode,
+                "--preflight",
+                p.send_preflight,
             ]
-            # Live sends explicitly raise only the bound WeChat main window. Doctor,
+            # Live sends explicitly raise only the bound calibrated WeChat window. Doctor,
             # connect and application dry-run never activate or change the desktop.
             focus_command = [
                 command[0],
@@ -300,6 +360,9 @@ class MacBridge:
                 "--window-height",
                 str(p.window_height),
             ]
+            focus_command += ["--window-mode", p.window_mode]
+            if p.window_mode == "independent":
+                focus_command += ["--chat", c.title]
             native_report = (
                 state / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.preflight.json"
             )
@@ -308,6 +371,8 @@ class MacBridge:
                 focus_code = native_failure(focus) if focus.returncode else "wechat_focused"
                 write_private(native_report, {"focus": focus_code})
                 if focus.returncode:
+                    if focus_code == "wechat_account_security_prompt":
+                        record_security_stop(self.settings)
                     return {"attempted": False, "code": "mac_focus_rejected:" + focus_code}
                 self.check()
                 # Preflight has no activation, pasteboard access, click or key injection.
@@ -319,6 +384,8 @@ class MacBridge:
                 )
                 write_private(native_report, {"focus": focus_code, "preflight": preflight_code})
                 if preflight.returncode:
+                    if preflight_code == "wechat_account_security_prompt":
+                        record_security_stop(self.settings)
                     return {
                         "attempted": False,
                         "code": "mac_send_preflight_rejected:" + preflight_code,
@@ -332,7 +399,17 @@ class MacBridge:
             write_private(
                 receipt, {"status": "dispatching", "outbox_id": intent.outbox_id, "at": time.time()}
             )
-            subprocess.run(command, capture_output=True, text=True, timeout=30)
+            dispatched = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            dispatched_code = (
+                native_failure(dispatched) if dispatched.returncode else "native_attempt_finished"
+            )
+            write_private(
+                state
+                / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.native-result.json",
+                {"exit_code": dispatched.returncode, "code": dispatched_code},
+            )
+            if dispatched_code == "wechat_account_security_prompt":
+                record_security_stop(self.settings)
             return {"attempted": True, "code": "mac_native_attempt_finished"}
         finally:
             path.unlink(missing_ok=True)

@@ -80,6 +80,8 @@ def bind(args):
             window_width=getattr(args, "window_width", None),
             window_height=getattr(args, "window_height", None),
             send_key=args.send_key,
+            window_mode=getattr(args, "window_mode", "main"),
+            send_preflight=getattr(args, "send_preflight", "visual"),
         )
         write_private(args.output, profile.model_dump(mode="json"))
         print("native_account_and_friend_bound_no_send")
@@ -97,6 +99,8 @@ def main():
     parser.add_argument("--window-width", type=int)
     parser.add_argument("--window-height", type=int)
     parser.add_argument("--send-key", choices=("enter", "cmd-enter"), default="enter")
+    parser.add_argument("--window-mode", choices=("main", "independent"), default="main")
+    parser.add_argument("--send-preflight", choices=("visual", "ax-window-db"), default="visual")
     parser.add_argument("--output", type=Path, required=True)
     try:
         bind(parser.parse_args())

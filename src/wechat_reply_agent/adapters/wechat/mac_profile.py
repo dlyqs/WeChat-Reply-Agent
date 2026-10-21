@@ -34,12 +34,22 @@ class MacProfile(Contract):
     account_confirmed: bool = False
     contacts: tuple[MacContact, ...] = ()
     composer_top: float | None = Field(default=None, ge=0.45, le=0.88)
-    window_width: int | None = Field(default=None, ge=600)
+    window_width: int | None = Field(default=None, ge=360)
     window_height: int | None = Field(default=None, ge=450)
+    window_mode: Literal["main", "independent"] = "main"
+    send_preflight: Literal["visual", "ax-window-db"] = "visual"
     send_key: Literal["enter", "cmd-enter"] = "enter"
 
     @model_validator(mode="after")
     def unique_contacts(self):
+        if self.window_mode == "main" and self.window_width is not None and self.window_width < 600:
+            raise ValueError("main window must be at least 600 points wide")
+        if self.window_mode == "independent" and (
+            len(self.contacts) != 1 or self.send_preflight != "ax-window-db"
+        ):
+            raise ValueError("independent sending currently requires explicit degraded mode")
+        if self.send_preflight == "ax-window-db" and self.window_mode != "independent":
+            raise ValueError("degraded sending requires one bound independent chat")
         for attr in ("alias", "username", "title", "wechat_id"):
             values = [getattr(c, attr) for c in self.contacts]
             if len(values) != len(set(values)):
