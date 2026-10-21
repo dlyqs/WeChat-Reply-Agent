@@ -103,7 +103,7 @@ class NativeAX:
         )
         session = self.quartz.CGSessionCopyCurrentDictionary() or {}
         unlocked = not bool(session.get("CGSSessionScreenIsLocked", False))
-        unlocked = unlocked and bool(session.get("kCGSessionOnConsoleKey", False))
+        unlocked = unlocked and bool(session.get(self.quartz.kCGSessionOnConsoleKey, False))
         return {
             "accessibility": trusted,
             "screen_recording": screen,

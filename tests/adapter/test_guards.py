@@ -124,3 +124,28 @@ def test_native_doctor_failure_sanitized(adapter, bridge):
     result = adapter.health()
     assert not result.healthy and result.reason == "native_diagnostic_failed"
     assert "private desktop data" not in result.model_dump_json()
+
+
+def test_native_status_uses_quartz_console_key():
+    from types import SimpleNamespace
+
+    from wechat_reply_agent.adapters.wechat.mac_ax import NativeAX
+
+    bridge = NativeAX.__new__(NativeAX)
+    bridge.ax = SimpleNamespace(AXIsProcessTrusted=lambda: True)
+    bridge.quartz = SimpleNamespace(
+        kCGSessionOnConsoleKey="kCGSSessionOnConsoleKey",
+        CGPreflightScreenCaptureAccess=lambda: True,
+        CGSessionCopyCurrentDictionary=lambda: {"kCGSSessionOnConsoleKey": True},
+    )
+    bridge.appkit = SimpleNamespace(
+        NSRunningApplication=SimpleNamespace(
+            runningApplicationsWithBundleIdentifier_=lambda _: [object()],
+        )
+    )
+    assert bridge.status() == {
+        "accessibility": True,
+        "screen_recording": True,
+        "wechat_running": True,
+        "session_unlocked": True,
+    }
