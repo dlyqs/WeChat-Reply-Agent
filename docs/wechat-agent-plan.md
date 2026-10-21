@@ -262,6 +262,7 @@ SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGr
 - 用户随后明确「需要安装或者终端执行的你都自己执行」，据此执行真实只读 doctor：macOS 27.0.1 / arm64，Accessibility 与屏幕录制权限均可用，桌面已解锁，微信进程未运行。修正 Quartz console key，新增合成原生桥回归；当前 48 项 pytest、ruff 均通过。修复提交 `dc60302`。真实报告 `.local/acceptance/phase-1/doctor.json`；无实际读取/发送，G1 等待用户打开登录微信并核对效果。
 - 后续用户确认已登录并指定测试单聊，本地建立 `test-a` 绑定（真实名称仅存忽略的私有 profile）。实测 doctor 已可用，检测微信版本 4.1.5（31960），非 App Store 安装（原始渠道未核实）；P01-02 passed。读取尝试因微信不在前台被正确拒绝，未读取/发送消息，P01-03/04 仍未验收，等待用户保持测试会话前台。
 - 用户保持测试会话前台后，读取实际触发，但 AX 返回 `ax_control_missing_or_ambiguous`。只读树诊断仅 5 个节点，无会话/消息/输入框；临时 AXEnhancedUserInterface 启用请求返回 -25208，前后 false。判定当前微信 4.1.5（31960）AX 候选不可用。按既定 A 备选审阅截图/OCR 源码与 MIT，新增本机 Vision 只读诊断（不发送、不将 OCR 行冒充消息），56 项离线测试及合成图片真实 OCR 通过。等待用户前台采样验证；G1 仍未通过，不进入 Phase 2/3。原始诊断仅存本地忽略目录，公开不含真实会话名或正文。
+- 无 OCR 核查：主进程消息树不可见，13 个同应用包辅助进程未暴露 AX 窗口；未发现原生 AppleScript 脚本字典。菜单存在 Copy/Select All/Paste，但当前 disabled，复制原始消息的能力仍 not_tested。停止视觉等待，优先考虑剪贴板取文验证；Windows UIA、数据库读取仅对比，未改变平台/数据库边界。完整脱敏发现见 prototype-report 的无 OCR 小节，G1 仍 blocked。
 - 授权原话「请自动完成 phase1-3」已保存为 `auto_until` 1–3；因 G1 硬关口停止，Phase 2/3 依赖未满足，不实现、不标完成。收到 G1 证据后按原授权续做；G2 仍须真人实测。实现提交 `7a7425c`（`feat(adapter): add guarded AX channel prototype and offline G1 tests`）；授权和阻塞状态另作文档提交。
 
 ### Phase 2：最小 AI 闭环与 G2

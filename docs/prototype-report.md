@@ -56,3 +56,15 @@
 按原计划验证 A 的本地 Vision OCR 备选：新增只读 `vision_diagnostic.py`、`scripts/probes/vision_read.py` 和 mac Vision extra。截图只驻内存，先严格匹配窗口顶部目标标题，公开日志只输出数量/错误；本地报告只保存标题右侧内容候选，排除侧栏、标题与底部输入区。OCR 行不冒充规范化消息，不判断方向、不具备发送能力。没有有效截图或标题时拒绝，不从坐标猜发。
 
 当前 56 项离线测试通过；另以合成图片验证了真实 Apple Vision OCR。私有 AX 结构证据 `.local/acceptance/phase-1/ax-{structure,enhanced-structure}.json`，前台等待/读取状态另存本地 JSON。G1 P01-03/04 仍未通过，视觉诊断结果只能决定后续适配，不替代收发验收。
+
+## 无 OCR 路线核查（用户新增偏好）
+
+已停止视觉等待任务，暂不继续 OCR 采样。对当前客户端进行只读元信息检查：主窗口仍只有 5 个 AX 节点；另外检查 13 个同应用包内辅助进程，未发现暴露的 AX 窗口。应用包没有发现 `.sdef` 脚本字典，Info.plist 没有 NSAppleScriptEnabled/OSAScriptingDefinition 声明，因此没有发现可直接调用的聊天 AppleScript 对象接口，不能声称微信支持 `get messages` 一类命令。
+
+应用菜单能读取到 Copy / Select All / Paste，但观察时均 disabled。剪贴板提取原始文本仍有验证价值；尚未测试它能否复制消息、保留联系人/方向/消息边界或支持可靠增量。快捷键/鼠标注入能够承担操作动作，不代表可以识别正确会话或可靠读取消息。
+
+Computer use 可通过截图/可访问文本作观察，再执行点击、键盘操作。原生 AX 缺失时，视觉模型仍需从图像理解微信内容，不能被当作结构化、无视觉识字的消息接口。可辅助开发定位/临时操作，不据此承诺长期无人值守接入。
+
+下一候选是当前 Mac 的复制/剪贴板取文可行性；若失败，再比较 Windows UI Automation（需改变纯 Mac worker 形态）或数据库读取（会改变原计划不读聊天数据库/不读进程内存/不 Hook 的边界）。这些仅研究比较，未安装 Windows、降级微信、读取数据库/进程内存或发送消息。私有脱敏结构化结果见 `.local/acceptance/phase-1/non-ocr-investigation.json`。
+
+参考：[Apple UI scripting](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/AutomatetheUserInterface.html)、[OpenAI computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)、[Windows wxauto 环境与技术边界](https://docs.wxauto.org/docs/install.html)、[同类 Mac AX 收缩问题](https://github.com/huj28-creator/wechat-fastbridge/issues/1)。外部项目能力描述不代表本项目已验证。
