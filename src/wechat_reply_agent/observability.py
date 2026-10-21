@@ -15,7 +15,7 @@ def emit(event: str, *, outcome: str, reason: str | None = None, trace_id: str |
                 "trace_id": trace_id,
                 "conversation_ref": None,
                 "message_ref": None,
-                "adapter": "mac_ax",
+                "adapter": "application",
                 "duration_ms": None,
                 "outcome": outcome,
                 "reason": reason,

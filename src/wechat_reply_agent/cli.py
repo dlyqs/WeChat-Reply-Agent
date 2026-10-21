@@ -1,7 +1,6 @@
 """Explicit G1 probes. This module never runs a worker or opens a browser."""
 
 import argparse
-import fcntl
 import json
 import logging
 import os
@@ -14,18 +13,19 @@ from pydantic import ValidationError
 from pydantic_settings.exceptions import SettingsError
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
-from wechat_reply_agent.adapters.wechat.mac_ax import MacAXAdapter
 from wechat_reply_agent.adapters.wechat.profile import load_profile
 from wechat_reply_agent.config import Settings
 from wechat_reply_agent.domain.messages import SendIntent
 from wechat_reply_agent.observability import emit
+from wechat_reply_agent.privacy import private_directory
 
 
 def write_private(path: Path, payload: dict):
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_directory(path.parent)
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".report-")
     try:
-        os.fchmod(fd, 0o600)
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(payload, stream, ensure_ascii=False, indent=2, default=str)
             stream.write("\n")
@@ -43,8 +43,18 @@ def probe_lock(data_dir: Path):
     fd = os.open(data_dir / "probe.lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
+            if os.name == "nt":
+                import msvcrt
+
+                if os.fstat(fd).st_size == 0:
+                    os.write(fd, b"0")
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
             raise AdapterError("another_probe_running") from exc
         yield
     finally:
@@ -52,6 +62,17 @@ def probe_lock(data_dir: Path):
 
 
 def create_adapter(settings: Settings, *, profile_required: bool):
+    if settings.wechat_adapter == "replica":
+        from wechat_reply_agent.adapters.wechat.replica import ReplicaAdapter
+        from wechat_reply_agent.adapters.wechat.replica_profile import load_replica_profile
+
+        try:
+            profile = load_replica_profile(settings.wechat_profile)
+        except AdapterError:
+            if profile_required:
+                raise
+            profile = None
+        return ReplicaAdapter(settings, profile)
     if settings.wechat_adapter != "mac_ax":
         # Fake is injection-only. A CLI invocation must never pretend fake data is WeChat.
         raise AdapterError("fake_adapter_is_offline_test_only")
@@ -61,6 +82,8 @@ def create_adapter(settings: Settings, *, profile_required: bool):
         if profile_required:
             raise
         profile = None
+    from wechat_reply_agent.adapters.wechat.mac_ax import MacAXAdapter
+
     return MacAXAdapter(settings, profile)
 
 
@@ -69,6 +92,10 @@ def parser():
     commands = root.add_subparsers(dest="command", required=True)
     doctor = commands.add_parser("doctor", help="Read-only permission/environment diagnostic")
     doctor.add_argument("--output", type=Path, required=True)
+    connect = commands.add_parser(
+        "connect", help="Explicit key/cache/calibration/UIA initialization"
+    )
+    connect.add_argument("--output", type=Path, required=True)
     probe = commands.add_parser("probe", help="User-operated current test single-chat probes")
     actions = probe.add_subparsers(dest="action", required=True)
     read = actions.add_parser("read", help="Read visible messages; never scroll or select a chat")
@@ -80,6 +107,9 @@ def parser():
     send.add_argument("--text", required=True)
     send.add_argument("--confirm-send", action="store_true")
     send.add_argument("--output", type=Path)
+    resolve = commands.add_parser("resolve", help="Record human verification of an uncertain probe")
+    resolve.add_argument("--outbox-id", required=True)
+    resolve.add_argument("--resolution", choices=("sent", "discarded"), required=True)
     return root
 
 
@@ -92,6 +122,8 @@ def execute(args, settings: Settings, adapter):
             reason=health.reason,
         )
         report = {
+            "plan_version": "v4",
+            "foundation": settings.wechat_adapter,
             "phase": 1,
             "mode": "diagnostic",
             "health": health.model_dump(mode="json"),
@@ -101,17 +133,66 @@ def execute(args, settings: Settings, adapter):
         write_private(args.output, report)
         return 0 if health.healthy else 2
     with probe_lock(settings.data_dir):
+        if args.command == "resolve":
+            from uuid import UUID
+
+            try:
+                outbox_id = str(UUID(args.outbox_id))
+                receipt = settings.data_dir / "probe-sends" / f"{outbox_id}.json"
+                record = json.loads(receipt.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                raise AdapterError("probe_receipt_missing_or_invalid") from None
+            if record.get("outcome") != "unknown":
+                raise AdapterError("probe_not_uncertain")
+            record["resolution"] = args.resolution
+            write_private(receipt, record)
+            return 0
+        if args.command == "connect":
+            result = adapter.connect()
+            write_private(
+                args.output,
+                {
+                    "phase": 1,
+                    "plan_version": "v4",
+                    "foundation": settings.wechat_adapter,
+                    "mode": "connect",
+                    "steps": result,
+                    "g1": "not_tested",
+                },
+            )
+            emit("adapter.connect", outcome="initialized")
+            return 0
         ref = adapter.resolve_conversation(args.contact)
+        if args.action == "send":
+            if not args.confirm_send:
+                raise AdapterError("explicit_confirm_send_required")
+            for old in (settings.data_dir / "probe-sends").glob("*.json"):
+                try:
+                    record = json.loads(old.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    raise AdapterError("probe_receipt_invalid_stop_required") from None
+                if record.get("outcome") == "unknown" and not record.get("resolution"):
+                    raise AdapterError("unresolved_probe_stop_required")
+        if settings.wechat_adapter == "replica" and not (
+            args.action == "send" and settings.send_mode == "dry-run"
+        ):
+            adapter.connect()
         if args.action == "read":
             events, cursor = adapter.poll_events()
             report = {
+                "plan_version": "v4",
+                "foundation": settings.wechat_adapter,
                 "phase": 1,
                 "mode": "probe_read",
                 "g1": "not_tested",
                 "conversation": ref.model_dump(),
                 "cursor": cursor,
-                "events": [e.model_dump(mode="json") for e in events[-args.limit :]],
-                "note": "Visible snapshot only; occurrence_ref is not a stable message ID",
+                "events": [
+                    e.model_dump(mode="json")
+                    for e in events
+                    if e.conversation_id == ref.conversation_id
+                ][-args.limit :],
+                "note": "Native database identities for Replica; private evidence only",
             }
             write_private(args.output, report)
             emit("adapter.read", outcome="snapshot")
@@ -122,6 +203,8 @@ def execute(args, settings: Settings, adapter):
         # Persist before the key boundary. A crash leaves unknown, never an automatic retry.
         receipt = settings.data_dir / "probe-sends" / f"{intent.outbox_id}.json"
         report = {
+            "plan_version": "v4",
+            "foundation": settings.wechat_adapter,
             "phase": 1,
             "mode": intent.mode,
             "outbox_id": intent.outbox_id,
@@ -156,7 +239,9 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
         settings = Settings()
-        adapter = create_adapter(settings, profile_required=args.command != "doctor")
+        adapter = create_adapter(
+            settings, profile_required=args.command not in ("doctor", "resolve")
+        )
         return execute(args, settings, adapter)
     except (ValidationError, SettingsError):
         error = "configuration_invalid"
@@ -164,6 +249,21 @@ def main(argv=None):
         error = str(exc)
     except Exception:
         error = "local_or_native_operation_failed"
+    output = getattr(args, "output", None)
+    if output:
+        try:
+            write_private(
+                output,
+                {
+                    "phase": 1,
+                    "plan_version": "v4",
+                    "g1": "not_tested",
+                    "status": "failed",
+                    "code": error,
+                },
+            )
+        except OSError:
+            pass
     emit("probe.error", outcome="rejected", reason=error)
     print(json.dumps({"code": error, "message": "See README G1 troubleshooting"}), file=sys.stderr)
     return 2

@@ -6,12 +6,17 @@ third-party material identified below or of separately installed dependencies.
 No wxauto/wxauto4 source code or binary is bundled with this project; the Windows
 probe uses documented APIs through a separately installed dependency.
 
-The v4 execution plan selects wechatauto-replica 1.2.7.0 at commit
-d322c4a9b1124228820bab363e5676016f188fc6 for future vendoring under
-third_party/wechatauto_replica/. Its source has not been imported yet.
-When imported, retain its Apache-2.0 license, applicable attribution/NOTICE
-and modification records; the project's noncommercial license does not
-replace the upstream license. See docs/reuse-register.md.
+## wechatauto-replica
+
+Vendored at third_party/wechatauto_replica/, version 1.2.7.0, commit
+ d322c4a9b1124228820bab363e5676016f188fc6, from
+https://github.com/fanyuantaier/wechatauto-replica.
+The complete Apache-2.0 license is retained at
+third_party/wechatauto_replica/LICENSE; original imported file hashes and local
+modification statements are in UPSTREAM_FILES.json and UPSTREAM.md there.
+Runtime PNG resources retain the upstream license. This project's noncommercial
+license does not replace the upstream license. Dependencies retain their respective
+licenses distributed in package metadata; exact versions are recorded in uv.lock.
 
 ## WeChat-MCP
 

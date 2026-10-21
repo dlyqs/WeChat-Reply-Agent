@@ -14,17 +14,32 @@ def main():
         print("Existing report preserved; update manual evidence in place.")
         return
     cases = [
-        ("P01-01", "assistant", "Complete synthetic events; uncertain identity rejects send"),
+        ("P01-01", "assistant", "Portable import/config/offline tests; doctor never initializes"),
         (
             "P01-02",
             "assistant+user",
-            "Missing permissions/app diagnose without writes; user doctor",
+            "Windows version, process account, private cache and initialization are verified",
         ),
-        ("P01-03", "user", "Two contacts x five texts, repeated bubbles and correct directions"),
-        ("P01-04", "user", "One fixed reply each; mismatch/focus uncertainty refuses send"),
+        (
+            "P01-03",
+            "assistant+user",
+            "One friend, five texts including duplicates and self direction",
+        ),
+        (
+            "P01-04",
+            "assistant+user",
+            "Dry-run, one fixed reply, recipient confirmation and refusals",
+        ),
+        (
+            "P01-05",
+            "assistant",
+            "Inclusive cross-shard cursor, old readback, stale/corrupt snapshots",
+        ),
     ]
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     payload = {
+        "plan_version": "v4",
+        "foundation": "replica",
         "phase": 1,
         "commit": commit,
         "mode": "offline+manual_pending",

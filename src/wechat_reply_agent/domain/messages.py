@@ -30,6 +30,13 @@ class InboundEvent(Contract):
     event_id: str = Field(default_factory=lambda: str(uuid4()))
     conversation_id: str
     source_message_id: str | None = None
+    account_ref: str | None = None
+    account_generation: str | None = None
+    native_session: str | None = None
+    shard: str | None = None
+    local_id: int | None = None
+    sort_seq: int | None = None
+    sender_username: str | None = None
     occurrence_ref: str
     direction: Direction
     type: Literal["text", "unknown", "file", "transcript", "system"] = "text"
@@ -60,6 +67,7 @@ class SendResult(Contract):
     outcome: Literal["verified_sent", "not_sent", "unknown"]
     basis: str
     error: str | None = None
+    evidence_ref: str | None = None
 
 
 class AdapterCapabilities(Contract):

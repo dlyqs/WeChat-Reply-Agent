@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 
 import pytest
@@ -11,8 +12,15 @@ def test_private_report(tmp_path):
     path = tmp_path / "private" / "report.json"
     write_private(path, {"test": True})
     assert json.loads(path.read_text()) == {"test": True}
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    else:
+        import subprocess
+
+        acl = subprocess.check_output(["icacls", str(path.parent)], text=True)
+        assert "(OI)(CI)(F)" in acl
+        assert "(I)" not in acl
 
 
 def test_failed_replace_keeps_previous(tmp_path, monkeypatch):

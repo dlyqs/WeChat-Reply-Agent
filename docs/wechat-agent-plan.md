@@ -6,10 +6,10 @@
 ~~~text
 execution mode: auto_until
 automatic start phase: 1
-automatic stop phase: 3
-execution state: paused
+automatic stop phase: 2
+execution state: running
 conversation relay: off
-current change: plan revision only
+current change: phase 1 G1 passed; phase 2 implementation
 wechat foundation: wechatauto-replica 1.2.7.0
 upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 ~~~
@@ -180,8 +180,8 @@ SendResult 保留 verified_sent / not_sent / unknown：
 
 | 阶段 | 主题 | 交付等级 | 状态 | 当前事实与依赖 |
 | --- | --- | --- | --- | --- |
-| Phase 1 | 基座内化、适配与固定收发 | 必需 | blocked | 公开源码已审阅；Windows G1 结果未回传，基座未导入 |
-| Phase 2 | 最小 Agent 闭环 | 必需 | pending | 等待 G1；真实模型/微信 G2 |
+| Phase 1 | 基座内化、适配与固定收发 | 必需 | completed | 固定基座已内化；Windows 4.1.15.56 G1 通过，私有报告已记录 |
+| Phase 2 | 最小 Agent 闭环 | 必需 | in_progress | G1 已通过；实现最小 Agent 并执行真实模型/微信 G2 |
 | Phase 3 | 配置、持久化与运行控制 | 必需 | pending | 等待 G2；收敛原型到正式仓储 |
 | Phase 4 | 本地 API 与工作台 | 必需 | pending | Phase 3；前端仅静态验证，用户验收界面 |
 | Phase 5 | 知识检索与长期记忆 | 必需 | pending | Phase 4；复用 Phase 2 Agent 扩展 |
@@ -196,12 +196,12 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 
 任务：
 
-- [ ] 固定 SHA 导入源码与资源，记录许可、来源和本地补丁；本地 path 依赖在 Windows 锁定，Mac 不安装 Windows 原生包。
-- [ ] 实现 ReplicaAdapter/Bridge、明确账号与测试会话映射，归一化消息类型、发送者与方向；不启用上游全会话/媒体/朋友圈功能。
-- [ ] 处理第 4 节中影响当前通道的并列游标、方向、发送水位/重试、新鲜度与缓存/日志问题，保留可追溯补丁和必要合成回归，不扩展为通用底层重写。
-- [ ] Windows doctor/connect/probe read/send 可用，OCR/热激活按配置执行；移除 Windows 对 fcntl/Mac CLI 的运行依赖。
-- [ ] 先只读验证，再 dry-run，最后一次显式固定回复；每一步都有稳定错误、私有报告和停发出口。
-- [ ] 报告生成器补充 plan_version/foundation，旧案例和数据不自动填成新基座 passed。
+- [x] 固定 SHA 导入源码与资源，记录许可、来源和本地补丁；本地 path 依赖在 Windows 锁定，Mac 不安装 Windows 原生包。
+- [x] 实现 ReplicaAdapter/Bridge、明确账号与测试会话映射，归一化消息类型、发送者与方向；不启用上游全会话/媒体/朋友圈功能。
+- [x] 处理第 4 节中影响当前通道的并列游标、方向、发送水位/重试、新鲜度与缓存/日志问题，保留可追溯补丁和必要合成回归，不扩展为通用底层重写。
+- [x] Windows doctor/connect/probe read/send 可用，OCR/热激活按配置执行；移除 Windows 对 fcntl/Mac CLI 的运行依赖。
+- [x] 先只读验证，再 dry-run，最后一次显式固定回复；每一步都有稳定错误、私有报告和停发出口。
+- [x] 报告生成器补充 plan_version/foundation，旧案例和数据不自动填成新基座 passed。
 
 验收：
 
@@ -211,7 +211,7 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 - P01-04：dry-run 不按键；显式固定回复由对端确认；草稿/焦点/目标不符拒绝，可能发送后的失败保持 unknown。
 - P01-05：合成同 sort_seq 跨批/跨分片、新旧同文发送回读和坏库/旧快照错误，验证应用能去重、拒绝错误确认并暴露降级；未覆盖的 WAL 边界明确披露。
 
-完成记录：已有包、契约、Mac AX/视觉研究、旧 wxauto4 独立探针和 62 项离线测试；这些不等于 Replica 验收。当前无 Replica 导入、Windows 真实读取/发送或 G1 通过证据，保持 blocked。下一次先核对 Windows 工作区已有结果，不重复或覆盖当地成果。
+完成记录（2026-10-21）：固定 SHA 内化、Windows extra/锁、懒加载适配、doctor/connect/probe、并列游标、发送证据及隐私限制已实现。92 项离线测试通过。Windows 微信 4.1.15.56 签名有效；进程账号与原生测试单聊绑定，5 条来信含连续同文和 1 条本人发出记录逐条核对，dry-run 无按键，一次固定回复经本地新记录和用户对端确认。反例/损坏快照为合成验证，不冒充实机故障。G1 passed；证据 `.local/acceptance/phase-1/report.json`。完整 WAL 提交/累计 checksum 边界仍未覆盖，见 UPSTREAM.md。
 
 ### Phase 2：最小 LangGraph Agent 与 G2
 
@@ -363,3 +363,5 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 ## 9. 最终完成条件
 
 Phase 1–5 与 Phase 7 的必需任务、G1/G2、工作台人工验收和真实视频齐备；Phase 6 仅对明确选择的项目验收。应用可从干净 Windows 源码包启动，复用基座作为内置依赖，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、离线截图、模型控制台或阶段文档不能作为最终完成。
+
+本次执行范围由用户明确收窄为 Phase 1–2；完成 Phase 2 后停止，不自动实施 Phase 3。测试采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。

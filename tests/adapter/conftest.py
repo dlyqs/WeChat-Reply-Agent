@@ -100,6 +100,7 @@ class Pixels:
 def settings(tmp_path):
     return Settings(
         _env_file=None,
+        wechat_adapter="mac_ax",
         wechat_allowlist=["a", "b"],
         send_mode="live",
         data_dir=tmp_path,
