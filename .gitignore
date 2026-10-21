@@ -55,3 +55,4 @@ coverage/
 /logs/
 /tmp/
 *.log
+.settings-private/

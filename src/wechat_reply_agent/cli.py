@@ -90,6 +90,11 @@ def create_adapter(settings: Settings, *, profile_required: bool):
 def parser():
     root = argparse.ArgumentParser(prog="wechat-agent", description=__doc__)
     commands = root.add_subparsers(dest="command", required=True)
+    serve = commands.add_parser(
+        "serve", help="Loopback API and bundled workbench; initially stopped"
+    )
+    serve.add_argument("--host", choices=("127.0.0.1", "localhost", "::1"))
+    serve.add_argument("--port", type=int)
     doctor = commands.add_parser("doctor", help="Read-only permission/environment diagnostic")
     doctor.add_argument("--output", type=Path, required=True)
     connect = commands.add_parser(
@@ -291,6 +296,29 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
         settings = Settings()
+        if args.command == "serve":
+            import uvicorn
+
+            from wechat_reply_agent.api.app import create_app
+            from wechat_reply_agent.settings_store import SettingsStore
+
+            # Each server launch requires explicit live selection in the workbench.
+            overrides = {"send_mode": "dry-run"}
+            if args.host:
+                overrides["app_host"] = args.host
+            if args.port is not None:
+                overrides["app_port"] = args.port
+            settings = Settings.model_validate(settings.model_dump() | overrides)
+            with probe_lock(settings.data_dir):
+                app = create_app(SettingsStore(settings=settings, session_fields=overrides))
+                uvicorn.run(
+                    app,
+                    host=settings.app_host,
+                    port=settings.app_port,
+                    access_log=False,
+                    log_level="warning",
+                )
+            return 0
         adapter = create_adapter(
             settings, profile_required=args.command not in ("doctor", "resolve")
         )

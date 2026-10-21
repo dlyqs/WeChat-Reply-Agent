@@ -22,3 +22,8 @@
 Phase 2 新增 LangGraph（MIT）和 HTTPX（BSD-3-Clause）依赖；DeepSeek 仅通过配置 API 调用，不复制模型权重或服务端代码。当前锁定分发包许可摘要见 [dependency-licenses.md](dependency-licenses.md)。
 
 本次 Windows 实现使用 Python 3.12.1 和 uv 0.13.4。此前 Mac 工具安装记录是历史事实，不代表本次 Windows 安装位置。
+
+Phase 3–4 新增 FastAPI / Starlette / Uvicorn 作为本地同源 API 和静态服务器，
+不复用其示例产品代码。React / React DOM / Radix Tabs 用于工作台组件与可访问导航；
+页面和运行交互为本项目原创。精确版本分别见 uv.lock 与 ui/package-lock.json；
+完整新增依赖声明见 backend-api-licenses.md、frontend-licenses.md，构建产物随附声明。

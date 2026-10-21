@@ -91,3 +91,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Phase 3–4 application dependencies
+
+FastAPI (MIT), Starlette and Uvicorn (BSD-3-Clause), and their locked dependencies
+retain their own licenses. Full notices for newly introduced API dependencies are
+in [backend-api-licenses.md](docs/backend-api-licenses.md).
+React, React DOM and Radix UI use MIT licenses; Vite, TypeScript, Prettier and
+transitive build packages retain their distributed licenses. See
+[frontend-licenses.md](docs/frontend-licenses.md) and ui/package-lock.json.
+The bundled workbench includes THIRD_PARTY_LICENSES.txt, served at the same path
+by the local application. Original project code remains under the root LICENSE.

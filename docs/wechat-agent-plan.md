@@ -5,16 +5,16 @@
 
 ~~~text
 execution mode: auto_until
-automatic start phase: 1
-automatic stop phase: 2
-execution state: completed
+automatic start phase: 3
+automatic stop phase: 4
+execution state: implementation_completed_manual_acceptance_pending
 conversation relay: off
-current change: phase 1-2 completed; G1/G2 passed; worker stopped
+current change: phase 3 completed; phase 4 implemented; workbench human acceptance pending; worker stopped
 wechat foundation: wechatauto-replica 1.2.7.0
 upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 ~~~
 
-v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义；后续合并为 Phase 4–7。2026-10-21 用户明确要求自动完成 Phase 1–2；现已完成 G1/G2 并停止。本次不继续 Phase 3，原计划修订时的暂停记录已由本次执行状态替代。
+v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义；后续合并为 Phase 4–7。2026-10-21 先前已完成 Phase 1–2 与 G1/G2；本次用户明确授权自动完成 Phase 3–4。Phase 3 已完成，Phase 4 软件实现和自动验证已完成，工作台界面/真实微信状态同步保留待用户人工验收。本次不推进 Phase 5。
 
 ## 1. 交付目标与范围
 
@@ -142,7 +142,7 @@ flowchart LR
 | `replay --suite <name> --output <json>` | 合成输入回放，结果标为 offline，不接触微信 |
 | `verify` / `package --video <path>` | 检查/打包已存在的真实产物，不启动客户端、不上传或推送 |
 
-当前已实现 doctor/connect/probe/resolve/prototype；serve/replay/verify/package 仍是后续目标，不能将其标为已可执行。
+当前已实现 doctor/connect/probe/resolve/prototype/serve；replay/verify/package 仍是后续目标，不能将其标为已可执行。Phase 3–4 干净安装验证脚本不是 Phase 7 的 verify/package 命令。
 
 | 配置组 | 目标字段 |
 | --- | --- |
@@ -182,13 +182,13 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | --- | --- | --- | --- | --- |
 | Phase 1 | 基座内化、适配与固定收发 | 必需 | completed | 固定基座已内化；Windows 4.1.15.56 G1 通过，私有报告已记录 |
 | Phase 2 | 最小 Agent 闭环 | 必需 | completed | LangGraph/SQLite 原型与 DeepSeek 三轮 G2 通过；达到 3 条上限后已停发 |
-| Phase 3 | 配置、持久化与运行控制 | 必需 | pending | G2 已通过；本次范围止于 Phase 2，正式仓储/服务待后续授权 |
-| Phase 4 | 本地 API 与工作台 | 必需 | pending | Phase 3；前端仅静态验证，用户验收界面 |
+| Phase 3 | 配置、持久化与运行控制 | 必需 | completed | 配置/迁移/单线程运行控制、故障回放及 Windows 干净目录锁安装通过 |
+| Phase 4 | 本地 API 与工作台 | 必需 | implemented_pending_manual | API/React 工作台/serve 及自动检查完成；界面与真实微信状态同步待用户验收 |
 | Phase 5 | 知识检索与长期记忆 | 必需 | pending | Phase 4；复用 Phase 2 Agent 扩展 |
 | Phase 6 | 业务工具、文件与语音入口 | 可选，未选择 | pending | Phase 5；未选择则记录不纳入并转 Phase 7 |
 | Phase 7 | 集成回归、录像与交付 | 必需 | pending | Phase 5，以及已选择的 Phase 6 项 |
 
-Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而扩大现有自动执行范围。达到 Phase 3 后停止自动推进，汇报结果；不能将 Phase 3 完成称为整个应用交付完成。
+本次授权范围为 Phase 3–4。软件实现和自动检查后停止，不推进 Phase 5；工作台人工验收不能由离线检查替代，不能将本次实施称为整个应用交付完成。
 
 ### Phase 1：内化微信控制基座并通过 G1
 
@@ -232,7 +232,7 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 - P02-04：重复回调/轮询只生成一个 outbox；连续同文新消息可分别处理；重启重新建基线，不回复旧历史。
 - P02-05：记录真实轮询、模型和发送耗时，不以旧实时指标拒绝固定环境演示，也不隐瞒实际延迟。
 
-完成记录（2026-10-21）：最小 LangGraph、限时单次 DeepSeek 兼容调用、输入/输出预算、SQLite inbox/游标事务、合并/串行/outbox、跨重启基线和 unknown 停发已实现。121 项离线测试、Ruff 和构建通过；源码归档在新目录完成 Windows 锁安装及 CLI 导入。真实模型使用 deepseek-flash，已完成 3 轮微信问答，用户确认全部收件且上下文追问记得测试姓名；G2 passed。真实 poll 约 0.34–0.38 秒，模型约 1.2–1.5 秒，发送/回读约 3.4 秒；轮询配置 15 秒，发送间隔约 51 秒。原始证据 `.local/acceptance/phase-2/report.json`，不把离线反例当实机故障。worker 达到 3 条上限后已停止。Phase 3 未实施。
+完成记录（2026-10-21）：最小 LangGraph、限时单次 DeepSeek 兼容调用、输入/输出预算、SQLite inbox/游标事务、合并/串行/outbox、跨重启基线和 unknown 停发已实现。121 项离线测试、Ruff 和构建通过；源码归档在新目录完成 Windows 锁安装及 CLI 导入。真实模型使用 deepseek-flash，已完成 3 轮微信问答，用户确认全部收件且上下文追问记得测试姓名；G2 passed。真实 poll 约 0.34–0.38 秒，模型约 1.2–1.5 秒，发送/回读约 3.4 秒；轮询配置 15 秒，发送间隔约 51 秒。原始证据 `.local/acceptance/phase-2/report.json`，不把离线反例当实机故障。worker 达到 3 条上限后已停止。该完成记录形成时 Phase 3 尚未实施；本次续做见后续阶段记录。
 
 ### Phase 3：配置、仓储与运行控制收敛
 
@@ -240,11 +240,11 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 
 任务：
 
-- [ ] 收敛所有设置、来源、校验、掩码、原子保存；上游缓存/校准与应用 DATA_DIR 一起管理。
-- [ ] 原型数据迁移为正式 contacts/conversations/inbox/messages/outbox/cursors/runtime_state/agent_runs，保留既有身份与去重记录。
-- [ ] 实现 SQLite 事务/约束、单实例、跨平台文件锁、队列上限、运行代数、启停与 degraded 恢复。
-- [ ] 崩溃后未确认 outbox 暂停待人工处理；退出不遗留工作线程或继续操作微信。
-- [ ] 同步 README、接口、Windows 证据与许可证；到此达到现有自动范围终点。
+- [x] 收敛所有设置、来源、校验、掩码、原子保存；上游缓存/校准与应用 DATA_DIR 一起管理。
+- [x] 原型数据迁移为正式 contacts/conversations/inbox/messages/outbox/cursors/runtime_state/agent_runs，保留既有身份与去重记录。
+- [x] 实现 SQLite 事务/约束、单实例、跨平台文件锁、队列上限、运行代数、启停与 degraded 恢复。
+- [x] 崩溃后未确认 outbox 暂停待人工处理；退出不遗留工作线程或继续操作微信。
+- [x] 同步 README、接口、Windows 证据与许可证；继续实施本次已授权的 Phase 4。
 
 验收：
 
@@ -253,7 +253,7 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 - P03-03：暂停后迟到模型结果不可发送，恢复不发旧队列；单实例、队列满与异常退出可恢复。
 - P03-04：Windows 干净工作目录可按锁安装和运行既有 CLI/prototype；离线与真实结论分别记录。
 
-完成记录：未开始；完成后自动范围停止于 Phase 3，不自动实施工作台。
+完成记录（2026-10-21）：设置来源/校验/掩码、私有暂存与原子保存、v1 原位迁移、正式仓储、文件锁、队列上限、持久化运行代数/状态及唯一原生线程已实现。暂停丢弃迟到结果，恢复重建基线，未确认 outbox 人工处理，账号/库替换拒绝与缓存保留期均有离线验证。Windows 从无私有数据的 sdist 干净目录按锁安装 extra windows，既有 CLI 导入和 serve HTTP 检查通过；本次未重新执行原生微信收发。证据 `.local/acceptance/phase-3/report.json`、`install-check.json`。
 
 ### Phase 4：最终应用 API、工作台与统一启动
 
@@ -263,11 +263,11 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 任务：
 
-- [ ] FastAPI 仅监听 loopback，同源服务静态页/API，校验 Host/Origin 和写操作来源；错误只返回稳定 code/message/trace_id。
-- [ ] 接通健康/能力、启停、会话/消息/Agent 记录、outbox 人工处理、配置掩码与保存、显式诊断 API。
-- [ ] React/TypeScript/Vite 工作台采用概览、会话、设置三个入口；空态、未连接、dry-run/live、unknown 与真实连接状态清楚。
-- [ ] 使用现有组件库构建简洁桌面布局；状态和时间线解释输入、回复结果与过滤原因，不展示隐藏思维链或基座原始对象。
-- [ ] serve 使用正式运行服务，初始停止，不自动打开网页；源码安装与构建后同源启动均可操作。
+- [x] FastAPI 仅监听 loopback，同源服务静态页/API，校验 Host/Origin 和写操作来源；错误只返回稳定 code/message/trace_id。
+- [x] 接通健康/能力、启停、会话/消息/Agent 记录、outbox 人工处理、配置掩码与保存、显式诊断 API。
+- [x] React/TypeScript/Vite 工作台采用概览、会话、设置三个入口；空态、未连接、dry-run/live、unknown 与真实连接状态清楚。
+- [x] 使用现有组件库构建简洁桌面布局；状态和时间线解释输入、回复结果与过滤原因，不展示隐藏思维链或基座原始对象。
+- [x] serve 使用正式运行服务，初始停止，不自动打开网页；源码安装与构建后同源启动均可操作。
 
 验收：
 
@@ -276,7 +276,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - P04-03：前端类型检查与构建通过；用户验证界面、交互和微信状态同步。
 - P04-04：uv run wechat-agent serve 可从构建产物启动；没有 Node 开发服务器时仍能管理运行。
 
-完成记录：未开始。
+完成记录（2026-10-21）：FastAPI 回环/Host/Origin/写请求头校验、稳定错误、分页、运行控制、会话/Agent/outbox、配置与显式只读诊断 API 已接通；React/TypeScript/Vite + Radix Tabs 提供概览/会话/设置，内置构建产物由 serve 同源提供，无需 Node 服务器。137 项 Python 离线测试、Ruff、前端类型/构建、wheel/sdist 与 Windows 干净安装/真实 HTTP 检查通过。P04-03 的界面人工验收，以及 P04-02 的真实微信状态同步仍为 not_tested；本次未打开页面或发送微信，未标真人验收 passed。证据 `.local/acceptance/phase-4/report.json`，人工清单见 api-workbench.md。自动实施到此停止，不进入 Phase 5。
 
 ### Phase 5：知识检索与按联系人隔离的长期记忆
 
@@ -354,14 +354,14 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 1. 下一次先读本计划、overview 和 Windows 接入说明，核对当前工作区、提交、已有 Windows 证据及适用约束。
 2. 不再安装旧 wxauto4 探针依赖，不按旧 Mac AX/OCR 选型继续试错；旧文件只作历史，必要契约和测试可复用。
-3. 本次明确执行 Phase 1–2，已完成并停止；原 1–3 自动范围不覆盖本次收窄指令。G1/G2 缺失或环境未就绪时记录 blocked 和解除条件，不能跳关。
+3. 先前 Phase 1–2 与 G1/G2 已完成；本次明确执行 Phase 3–4，软件实现与自动检查已完成，人工验收项保留。G1/G2 缺失或环境未就绪不能启动运行服务。
 4. Phase 1–3 编号保持，旧 Phase 4–6/11–15 相关应用集成合并到新 Phase 4；旧 7/9/13 的知识记忆归新 Phase 5；旧 8/10 的工具与附件归新 Phase 6；旧 15–18 的打包/验证/录像归新 Phase 7。
 5. 旧用例编号和报告保留其日期与方案，不改写旧测试结果，不将其映射成新基座已通过；新记录注明 plan_version=v4 和 foundation=replica。
-6. Phase 3 后仍保留当前授权终点；后续实施按明确阶段/范围指令推进，不因已写出计划而自行执行。
+6. 本次自动授权终点为 Phase 4；界面/真实连接人工验收待用户核对，后续 Phase 5–7 按明确阶段指令推进。
 7. 运行时遇到上游缺陷只做必要且可追溯的补丁；改变产品范围、控制路线或支持声明须明确更新本计划。
 
 ## 9. 最终完成条件
 
 Phase 1–5 与 Phase 7 的必需任务、G1/G2、工作台人工验收和真实视频齐备；Phase 6 仅对明确选择的项目验收。应用可从干净 Windows 源码包启动，复用基座作为内置依赖，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、离线截图、模型控制台或阶段文档不能作为最终完成。
 
-本次执行范围由用户明确收窄为 Phase 1–2；完成 Phase 2 后停止，不自动实施 Phase 3。测试采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。
+本次执行范围由用户明确更新为 Phase 3–4；软件实现与自动检查完成后停止，不自动实施 Phase 5；工作台人工验收仍待核对。测试采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。

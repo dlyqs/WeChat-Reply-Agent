@@ -74,3 +74,7 @@ The vendored package and PNG assets retain Apache-2.0; see its LICENSE and UPSTR
 | winsdk | 1.0.0b10 | MIT License |
 | xxhash | 4.0.2 | BSD-2-Clause |
 | zstandard | 0.25.0 | BSD-3-Clause |
+
+Phase 3–4 的新增后端依赖及完整许可文本见 [backend-api-licenses.md](backend-api-licenses.md)。
+前端与构建工具的锁定依赖及许可文本见 [frontend-licenses.md](frontend-licenses.md)。
+以上补充不改写 Phase 1–2 安装环境的历史版本记录。

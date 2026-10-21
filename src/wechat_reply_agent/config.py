@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     queue_max_size: int = Field(default=100, ge=1, le=1000)
     min_send_interval_seconds: float = Field(default=30, ge=30, le=3600)
     max_sends_per_minute: int = Field(default=2, ge=1, le=2)
+    retention_days: int = Field(default=30, ge=1, le=365)
+    app_host: Literal["127.0.0.1", "localhost", "::1"] = "127.0.0.1"
+    app_port: int = Field(default=8765, ge=1024, le=65535)
+
+    @field_validator("wechat_db_root", mode="before")
+    @classmethod
+    def optional_root(cls, value):
+        return None if value == "" else value
 
     @field_validator("llm_base_url")
     @classmethod

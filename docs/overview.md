@@ -10,12 +10,15 @@
 
 | 位置 | 当前职责 |
 | --- | --- |
-| cli.py | doctor/connect/probe read/send/resolve/prototype；平台锁、私有报告和显式发送边界 |
+| cli.py | doctor/connect/probe read/send/resolve/prototype/serve；平台锁、私有报告和显式发送边界 |
 | adapters/wechat/replica.py | 原生账号/单聊绑定、分片消息身份、方向、并列边界游标和发送三态 |
 | adapters/wechat/replica_bridge.py | 唯一原生桥；进程账号核对、私有缓存/校准、一次发送及精确新记录回读 |
 | adapters/wechat/replica_profile.py | 私有账号/好友 profile，不用显示昵称代替原生 username |
 | agent/graph.py、llm/client.py | 最小 LangGraph、上下文预算、结构化结果和单次限时兼容模型请求 |
-| storage/prototype.py | 最小 SQLite inbox/outbox/游标/上下文/运行记录；Phase 3 再收敛正式迁移 |
+| storage/database.py、migrations.py、repositories.py | 正式 SQLite 迁移、事务账本、身份约束与分页读模型；prototype.py 为兼容导出 |
+| runtime/service.py、worker.py | 单实例应用生命周期、唯一原生执行线程、代数/暂停/恢复/退出与只读诊断 |
+| api/、ui/、web/ | 回环/同源 API、React/TypeScript 源码和内置构建产物 |
+| settings_store.py | 设置来源、校验、掩码、私有暂存与原子保存 |
 | runtime/prototype.py | 基线、事务轮询、过滤/合并、会话串行、低频发送、停止和不确定停发 |
 | scripts/acceptance/bind_replica.py | 根据明确提供的好友微信号，唯一定位账号与联系人，写私有绑定；不发送 |
 | tests/adapter、tests/prototype | 合成原生桥、上游补丁分支、账本/Agent/失败与恢复回归 |
@@ -23,7 +26,7 @@
 
 当前 Windows 固定收发已经通过 G1；G2 的真实多轮结果只以主计划和私有报告为准。
 旧 Mac AX/视觉诊断和 wxauto4 探针为历史研究，不再作为当前安装入口。
-API、工作台、知识/长期记忆和正式运行服务尚未实施；serve 仍不是可执行入口。
+API、React 工作台与正式运行服务已实现；serve 同源提供内置构建产物，初始 stopped/dry-run。详见 [API 与工作台](api-workbench.md)。知识/长期记忆尚未实施，界面及真实微信状态同步待用户验收。
 
 ## 验证和运行纪律
 
@@ -37,4 +40,4 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
-本次用户明确要求 Phase 1–2；Phase 2 完成后停止，不自动进入 Phase 3。
+本次用户明确要求 Phase 3–4；完成软件实现与自动验证后停止，不进入 Phase 5。工作台人工验收单独保留。

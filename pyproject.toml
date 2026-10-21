@@ -9,7 +9,14 @@ description = "Local WeChat reply agent with explicit sending gates"
 license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12,<3.14"
-dependencies = ["pydantic>=2.12,<3", "pydantic-settings>=2.11,<3", "langgraph>=1,<2", "httpx>=0.28,<1"]
+dependencies = [
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.11,<3",
+    "langgraph>=1,<2",
+    "httpx>=0.28,<1",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+]
 
 [project.optional-dependencies]
 windows = ["wechatauto-replica==1.2.7.0; sys_platform == 'win32'"]
@@ -34,7 +41,8 @@ wechat-agent = "wechat_reply_agent.cli:main"
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/third_party/wechatauto_replica", "/docs", "/scripts", "/tests", "/examples", "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES.md", "/.env.example"]
+include = ["/src", "/ui", "/third_party/wechatauto_replica", "/docs", "/scripts", "/tests", "/examples", "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES.md", "/.env.example"]
+exclude = ["/ui/node_modules"]
 
 [tool.ruff]
 target-version = "py312"

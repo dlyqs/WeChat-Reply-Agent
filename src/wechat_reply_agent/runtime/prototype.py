@@ -1,6 +1,7 @@
 """Bounded Phase 2 worker. Only this serialized path consumes durable outbox intents."""
 
 import asyncio
+import threading
 import time
 
 from langsmith import tracing_context
@@ -25,6 +26,8 @@ class Prototype:
         self.deadline = float("inf")
         self.poll_ms = 0
         self.started = 0
+        self.send_gate = threading.RLock()
+        self.before_send = lambda: None
 
     def eligible(self, event):
         p = self.adapter.profile
@@ -49,7 +52,7 @@ class Prototype:
         if not self.settings.wechat_allowlist:
             raise AdapterError("nonempty_allowlist_required")
         self.generation = self.ledger.begin_run()
-        self.adapter.connect()
+        self.connection_steps = self.adapter.connect()
         start = time.monotonic()
         events, cursor = self.adapter.poll_events(None)
         self.poll_ms = (time.monotonic() - start) * 1000
@@ -61,9 +64,10 @@ class Prototype:
         emit("prototype.ready", outcome=self.settings.send_mode, reason="baseline_recorded")
 
     def stop(self, reason="stopped"):
-        self.running = False
-        self.generation += 1
-        self.reason = reason
+        with self.send_gate:
+            self.running = False
+            self.generation += 1
+            self.reason = reason
 
     async def tick(self):
         if not self.running:
@@ -100,6 +104,18 @@ class Prototype:
             )
         result = response["result"]
         model_ms = (time.monotonic() - started) * 1000
+        with self.send_gate:
+            self.complete_turn(batch, result, generation, model_ms)
+
+    def complete_turn(self, batch, result, generation, model_ms):
+        if not self.running or generation != self.generation or time.monotonic() >= self.deadline:
+            result = result.model_copy(
+                update={
+                    "status": "cancelled",
+                    "reply_text": None,
+                    "reason": "run_generation_expired",
+                }
+            )
         intent = None
         if (
             self.running
@@ -124,6 +140,7 @@ class Prototype:
             if result.status == "error":
                 self.stop(result.reason)
             return
+        self.before_send()
         self.ledger.sending(intent.outbox_id, time.time())
         started = time.monotonic()
         try:
