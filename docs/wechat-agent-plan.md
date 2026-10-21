@@ -6,15 +6,15 @@
 流程依据：[dev-goal-workflow-meta-skill](/Users/git_local/dev-workflow-skill/SKILL.md)
 
 ```text
-execution mode: manual
-automatic start phase: none
-automatic stop phase: none
+execution mode: auto_until
+automatic start phase: 1
+automatic stop phase: 3
 conversation relay: off
-plan review: pending
-execution authorization: none
+plan review: accepted for Phase 1–3 by user instruction
+execution authorization: 用户 2026-10-21「请自动完成 phase1-3」；保留 G1/G2 人工关口
 ```
 
-本文件是后续“继续”“执行 Phase X”的唯一阶段状态来源；代码导航见 [overview.md](overview.md)。目前只完成调研和计划，尚未实现、安装或运行应用，没有任何真实微信验收结论。
+本文件是后续“继续”“执行 Phase X”的唯一阶段状态来源；代码导航见 [overview.md](overview.md)。现已授权自动执行 Phase 1–3，按下方主表推进；G1/G2 人工验收不可跳过，没有真实微信验收结论。
 
 **执行承诺：本计划覆盖最终答卷所需的全部开发、集成、测试、文档、启动打包与视频交付。每阶段按已列任务和用例直接实施；不得以“搭好框架”“仅完成 mock”“某个大模块后续另行规划”作为完成。全部 18 阶段的必需验收通过后，产物就是可提交答案。实施中只允许小范围技术修正和失败用例修复；若需要改变产品范围或已验收契约，明确报告阻塞，不静默重开大计划。**
 
@@ -201,9 +201,9 @@ SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGr
 
 | 阶段 | 主题 | 可验收增量 | 状态 | 实际产物 | 依赖/人工关口 |
 | --- | --- | --- | --- | --- | --- |
-| Phase 1 | 微信通道原型 | 诊断、读取、固定回复正确 | pending | — | G1 用户实机必验 |
-| Phase 2 | 最小 AI 闭环 | 白名单好友多轮真实回复与重启去重 | pending | — | Phase 1；G2 用户必验 |
-| Phase 3 | 配置和持久化 | 配置、迁移、身份与状态仓储 | pending | — | Phase 2 |
+| Phase 1 | 微信通道原型 | 诊断、读取、固定回复正确 | blocked | AX 候选/CLI/47 项离线测试；G1 实机待用户 | G1 用户实机必验 |
+| Phase 2 | 最小 AI 闭环 | 白名单好友多轮真实回复与重启去重 | pending | 等待 G1，尚未实施 | Phase 1；G2 用户必验 |
+| Phase 3 | 配置和持久化 | 配置、迁移、身份与状态仓储 | pending | 等待 G1/G2，尚未实施 | Phase 2 |
 | Phase 4 | 可靠收消息 | 多会话、过滤、合并、排队与去重 | pending | — | Phase 3；用户实机必验 |
 | Phase 5 | 可靠发送与启停 | 复核、发件箱、未知恢复、取消迟到结果 | pending | — | Phase 4；用户实机必验 |
 | Phase 6 | 后端 API 和事件 | 控制/配置/会话 API、SSE、脱敏日志 | pending | — | Phase 5 |
@@ -230,11 +230,11 @@ SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGr
 
 **任务**：
 
-- [ ] 审阅候选准确快照，登记具体文件/符号和许可证；不搬入整个上游 Agent/后台。
-- [ ] 实现事件/适配器契约和最小 Settings、dry-run、空白名单停发；Mac 依赖与离线依赖隔离。
-- [ ] 实现 doctor、probe read、probe send，报告环境/profile、方向、身份可信度和发送确认依据；不修改系统权限。
-- [ ] 唯一联系人别名映射；同名、未知身份/方向一律停发。
-- [ ] 编写 G1 步骤和报告输出，固定回复验证前不调用模型或做 UI。
+- [x] 审阅候选准确快照，登记具体文件/符号和许可证；不搬入整个上游 Agent/后台。
+- [x] 实现事件/适配器契约和最小 Settings、dry-run、空白名单停发；Mac 依赖与离线依赖隔离。
+- [x] 实现 doctor、probe read、probe send，报告环境/profile、方向、身份可信度和发送确认依据；不修改系统权限。
+- [x] 唯一联系人别名映射；同名、未知身份/方向一律停发。
+- [x] 编写 G1 步骤和报告输出，固定回复验证前不调用模型或做 UI。
 
 **验收用例**：
 
@@ -249,7 +249,15 @@ SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGr
 
 **复用/日志/出口**：复用 RPA 或 AX 薄层，记录 `adapter.health/identity_uncertain/send.result`。缺权限/联系人或 G1 未通过则 `blocked`；同一问题最多两轮基于证据修正，仍失败报告备选，不自行操纵微信。通过后 Phase 2。
 
-**完成记录**：未开始；执行后补充。
+**完成记录（2026-10-21，部分交付，blocked）**：
+
+- 已实现 `pyproject.toml/uv.lock/.env.example`、最终包内事件/适配器/最小配置/CLI、AX 候选/profile、合成 FakeAdapter、结构化边界日志、私有回执与单探针锁；新增 `tests/adapter/`、G1 报告初始化脚本、README、原型报告、复用登记、MIT 声明。已有 `.gitignore` 已覆盖私有证据/环境/产物，无需改写。
+- 审阅 A 的发送/布局与 MIT；改编 B 的 AX 遍历/识别符/输入与截图方向采样。AX 仅作 G1 待验证候选，尚未证实优于 A，最终适配器/profile 不冻结；具体文件、SHA、许可和改动见 `docs/reuse-register.md`。
+- 离线检查：Python 3.12.14；`uv sync --locked [--extra mac]`、47 项 pytest、ruff check/format、lock --check、CLI help、wheel/sdist 构建/隐私与 notice 清单检查均通过。Mac extra 仅 import/符号检查，没有执行原生 API、真实 doctor/probe、微信收发、浏览器或页面。
+- P01-01 passed；P01-02 的离线缺权限分支 passed，用户实机部分 not_tested；P01-03/04 not_tested。统一私有证据 `.local/acceptance/phase-1/{report.json,pytest.xml}`；公开脱敏说明 `docs/prototype-report.md`。
+- 安全/限制：仅用户当前前台测试单聊；标题绑定身份依赖用户核实账号/同名/单聊；方向是 0.7 置信截图启发式，unknown 停用自动回复；可见快照不声称跨帧去重。Return 尝试记 unknown 而非送达，无自动重试；失败可能留测试草稿，保留现场。完整 SQLite/outbox 恢复按后续阶段，不冒充本阶段已具备。
+- **人工关口与解除条件**：用户按 README 填私有 profile，执行 doctor、两联系人各 5 条读取及各 1 条固定回复，核对方向/同文/收件对象，验证错会话和焦点不明时停发，提供脱敏 P01-02–04 结果。缺少上述环境和证据，G1 不能通过。
+- 授权原话「请自动完成 phase1-3」已保存为 `auto_until` 1–3；因 G1 硬关口停止，Phase 2/3 依赖未满足，不实现、不标完成。收到 G1 证据后按原授权续做；G2 仍须真人实测。实现提交 `7a7425c`（`feat(adapter): add guarded AX channel prototype and offline G1 tests`）；授权和阻塞状态另作文档提交。
 
 ### Phase 2：最小 AI 闭环与 G2
 
