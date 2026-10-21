@@ -27,3 +27,13 @@ Phase 3–4 新增 FastAPI / Starlette / Uvicorn 作为本地同源 API 和静�
 不复用其示例产品代码。React / React DOM / Radix Tabs 用于工作台组件与可访问导航；
 页面和运行交互为本项目原创。精确版本分别见 uv.lock 与 ui/package-lock.json；
 完整新增依赖声明见 backend-api-licenses.md、frontend-licenses.md，构建产物随附声明。
+
+Phase 5 mac_db 新增固定 [acmerfight Gist](https://gist.github.com/acmerfight/0a01249ef72970d07a2603dbb629e80f)
+revision `c98dbb10cf23c30e83d5d744905101b0880887a0`（MIT，Copyright 2026 Contributors）。
+内化 Reader、SQLCipher、WAL 检验、LLDB 捕获、临时初始化和 Swift 桥，
+逐文件哈希与本地补丁见 `third_party/wechat_mac_toolkit/UPSTREAM.md`/`upstream-files.json`。
+读取只读 DB/WAL，发送使用严格目标/全文复核和应用回执；没有复制上游代理指令。
+新增 zstandard 兼容 Python 3.12/3.13；SQLCipher 4.19.0 通过 Homebrew 外部安装，
+不重写解密引擎。合成加密 DB/WAL 和原生桥编译/纯函数自检通过；真实首次取钥因
+Apple LLDB 创建目标时 SIGBUS 失败，尚无 Mac G1/G2，不标实机通道通过。
+具体运行/恢复边界见 [Mac 接入](mac-probe.md)。

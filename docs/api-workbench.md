@@ -60,3 +60,5 @@ Phase 3–4 实现说明，2026-10-21。阶段状态以 [主计划](wechat-agent
 本次没有打开页面、执行 UI 自动化或重新发送微信消息。既有 G1/G2 仍是原 Phase 1–2 证据，不能替代正式工作台的人体验收。
 
 人工验收完成记录（2026-10-21）：用户确认启动页面、配置/诊断、dry-run 完整流程、暂停/恢复/停止、一次 live 实际回复与对端收件，以及退出重启后 stopped/dry-run 和历史保留均通过。Phase 4 已完成。未要求刻意制造 unknown；unknown 人工处理与停发边界继续以既有离线用例为验证依据。本次授权范围止于 Phase 4。
+
+Mac Phase 5 has not passed G1/G2. The Mac Phase 6 service/workbench is not available; CLI explicitly rejects `mac_db serve`. Windows acceptance above remains unchanged. See [Mac setup](mac-probe.md).

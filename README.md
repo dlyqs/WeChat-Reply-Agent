@@ -6,6 +6,8 @@
 
 执行顺序、阶段状态及完成条件见 [执行计划](docs/wechat-agent-plan.md)，当前代码事实见 [开发入口](docs/overview.md)。
 
+Mac Phase 5: `mac_db` prototype code and synthetic tests are implemented, but initial key capture is blocked by an Apple LLDB SIGBUS. Mac G1/G2 have not passed; Phase 6 has not started. See [Mac setup and limitations](docs/mac-probe.md).
+
 ## 技术路线与运行范围
 
 | 部分 | 方案 |
