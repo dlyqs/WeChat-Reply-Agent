@@ -1,0 +1,486 @@
+"""Encrypted synthetic fixtures; never open real WeChat or inject desktop events."""
+
+import json
+import os
+from contextlib import ExitStack, closing
+from types import SimpleNamespace
+
+import pytest
+
+from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.adapters.wechat.mac_bridge import toolkit_module
+from wechat_reply_agent.adapters.wechat.mac_db import MacAdapter
+from wechat_reply_agent.adapters.wechat.mac_profile import MacProfile
+from wechat_reply_agent.config import Settings
+from wechat_reply_agent.domain.messages import SendIntent
+from wechat_reply_agent.storage.database import Ledger
+
+
+def row(local=1, sender="friend", text="same", database="message_0.db"):
+    return {
+        "database": database,
+        "local_id": local,
+        "local_type": 1,
+        "create_time": 100,
+        "sender_id": sender,
+        "text": text,
+    }
+
+
+class Bridge:
+    def __init__(self):
+        self.rows = []
+        self.salts = {"message_0.db": "salt"}
+        self.attempts = 0
+        self.behavior = "success"
+
+    def connect(self):
+        return {"keys": "verified"}
+
+    def snapshot(self, username):
+        return {
+            "salts": self.salts.copy(),
+            "cursor": {
+                s: max((r["local_id"] for r in self.rows if r["database"] == s), default=0)
+                for s in self.salts
+            },
+        }
+
+    def read(self, username, after=None, limit=200):
+        rows = (
+            self.rows
+            if after is None
+            else [r for r in self.rows if r["local_id"] > after.get(r["database"], 0)]
+        )
+        return [
+            r for name in self.salts for r in [x for x in rows if x["database"] == name][:limit]
+        ]
+
+    def send_once(self, intent):
+        self.attempts += 1
+        if self.behavior == "refuse":
+            return {"attempted": False, "code": "draft_or_target_unverified"}
+        if self.behavior == "crash":
+            raise RuntimeError("PRIVATE NATIVE DATA")
+        if self.behavior == "duplicate":
+            self.rows.extend([row(2, "self", intent.reply_text), row(3, "self", intent.reply_text)])
+        elif self.behavior == "success":
+            self.rows.append(row(2, "self", intent.reply_text))
+        return {"attempted": True}
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def setup(tmp_path):
+    root = tmp_path / "db_storage"
+    root.mkdir()
+    profile = MacProfile(
+        account_ref="account",
+        self_username="self",
+        account_generation="g1",
+        db_root=root,
+        key_file=tmp_path / "keys.json",
+        wechat_version="synthetic",
+        wechat_build="1",
+        account_confirmed=True,
+        composer_top=0.7,
+        contacts=(
+            {
+                "alias": "test",
+                "username": "friend",
+                "title": "Unique",
+                "wechat_id": "native-id",
+                "single_chat_confirmed": True,
+            },
+        ),
+    )
+    settings = Settings(
+        _env_file=None,
+        wechat_adapter="mac_db",
+        data_dir=tmp_path,
+        wechat_account_ref="account",
+        wechat_allowlist=["test"],
+        send_mode="live",
+        mac_verify_timeout_seconds=1,
+    )
+    bridge = Bridge()
+    adapter = MacAdapter(settings, profile, bridge)
+    adapter.connect()
+    return settings, adapter, bridge
+
+
+def intent(adapter, text="reply", **updates):
+    return SendIntent(
+        conversation=adapter.resolve_conversation("test"),
+        reply_text=text,
+        mode=adapter.settings.send_mode,
+        **updates,
+    )
+
+
+def test_baseline_paged_same_second_same_text_and_transactional_cursor(setup):
+    settings, adapter, bridge = setup
+    bridge.rows = [row()]
+    _, baseline = adapter.poll_events()
+    bridge.salts["message_1.db"] = "salt-1"
+    bridge.rows.extend(row(i) for i in range(2, 405))
+    bridge.rows.append(row(1, database="message_1.db"))
+    events, cursor = adapter.poll_events(baseline)
+    assert len(events) == 201
+    assert len({e.event_id for e in events}) == 201
+    assert all(e.direction == "incoming" and e.text == "same" for e in events)
+    assert max(e.local_id for e in events) == 201
+    with closing(Ledger(settings.data_dir / "test.sqlite3")) as ledger:
+        with pytest.raises(AdapterError, match="queue_full"):
+            ledger.ingest("scope", events, cursor, lambda e: True, 1)
+        assert ledger.cursor("scope") is None
+        replay, _ = adapter.poll_events(baseline)
+        assert {e.event_id for e in events} == {e.event_id for e in replay}
+    more, cursor2 = adapter.poll_events(cursor)
+    last, _ = adapter.poll_events(cursor2)
+    assert len(more) == 200 and len(last) == 3
+    assert not ({e.event_id for e in events} & {e.event_id for e in more})
+
+
+@pytest.mark.parametrize(
+    "sender,kind,direction,confidence",
+    [
+        ("self", 1, "outgoing", 1),
+        ("friend", 1, "incoming", 1),
+        (None, 1, "unknown", 0),
+        ("other", 1, "unknown", 0),
+        ("friend", 10000, "system", 1),
+    ],
+)
+def test_direction_requires_native_username(setup, sender, kind, direction, confidence):
+    _, adapter, _ = setup
+    data = row(sender=sender)
+    data["local_type"] = kind
+    event = adapter.normalize(adapter.resolve_conversation("test"), data)
+    assert event.direction == direction and event.confidence == confidence
+
+
+def test_replaced_or_regressed_source_degrades(setup):
+    _, adapter, bridge = setup
+    bridge.rows = [row(5)]
+    _, cursor = adapter.poll_events()
+    bridge.rows = []
+    with pytest.raises(AdapterError, match="boundary_changed"):
+        adapter.poll_events(cursor)
+    assert adapter.degraded
+
+
+def test_binding_cursor_is_not_transferable(setup):
+    _, adapter, _ = setup
+    _, cursor = adapter.poll_events()
+    adapter.profile = adapter.profile.model_copy(update={"account_generation": "g2"})
+    with pytest.raises(AdapterError, match="cursor_binding_changed"):
+        adapter.poll_events(cursor)
+
+
+def test_dry_run_has_no_native_or_receipt_side_effects(setup):
+    settings, adapter, bridge = setup
+    settings.send_mode = "dry-run"
+    assert adapter.send_text(intent(adapter)).basis == "dry_run"
+    assert not bridge.attempts and not (settings.data_dir / "macos").exists()
+
+
+@pytest.mark.parametrize("text", ["x" * 201, "a\nb", "a\tb", "a\x7fb"])
+def test_unsupported_prototype_output_refused_before_native_action(setup, text):
+    _, adapter, bridge = setup
+    result = adapter.send_text(intent(adapter, text))
+    assert result.outcome == "not_sent" and result.error == "mac_prototype_text_unsupported"
+    assert not bridge.attempts
+
+
+def test_send_requires_new_exact_self_record_and_same_id_never_retries(setup):
+    _, adapter, bridge = setup
+    bridge.rows = [row(1, "self", "reply")]
+    send = intent(adapter)
+    result = adapter.send_text(send)
+    assert result.outcome == "verified_sent" and result.basis == "local_db_confirmed"
+    assert adapter.send_text(send) == result and bridge.attempts == 1
+
+
+@pytest.mark.parametrize("behavior", ["old_only", "duplicate", "crash"])
+def test_ambiguous_old_or_post_key_failure_stays_unknown_after_restart(setup, behavior):
+    settings, adapter, bridge = setup
+    bridge.rows = [row(1, "self", "reply")]
+    bridge.behavior = behavior
+    send = intent(adapter)
+    assert adapter.send_text(send).outcome == "unknown"
+    restored = MacAdapter(settings, adapter.profile, bridge)
+    restored.connect()
+    assert restored.send_text(send).outcome == "unknown"
+    assert restored.send_text(intent(restored)).outcome == "not_sent"
+    assert bridge.attempts == 1
+
+
+def test_preflight_refusal_proves_no_dispatch(setup):
+    _, adapter, bridge = setup
+    bridge.behavior = "refuse"
+    result = adapter.send_text(intent(adapter))
+    assert result.outcome == "not_sent" and result.basis == "draft_or_target_unverified"
+
+
+def test_prepared_receipt_from_crash_is_never_resent(setup):
+    settings, adapter, bridge = setup
+    send = intent(adapter)
+    import hashlib
+
+    from wechat_reply_agent.cli import write_private
+
+    write_private(
+        settings.data_dir
+        / "macos/operations"
+        / f"{hashlib.sha256(send.outbox_id.encode()).hexdigest()}.json",
+        {
+            "payload": hashlib.sha256(send.model_dump_json().encode()).hexdigest(),
+            "outbox_id": send.outbox_id,
+            "status": "prepared",
+        },
+    )
+    assert adapter.send_text(send).outcome == "unknown"
+    assert bridge.attempts == 0
+
+
+def test_mac_import_and_doctor_are_lazy(setup, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_bridge
+
+    monkeypatch.setattr(mac_bridge.platform, "system", lambda: "Linux")
+    settings, adapter, _ = setup
+    adapter._bridge = None
+    assert not adapter.health().healthy and adapter._bridge is None
+    assert mac_bridge.environment(settings) == {
+        "platform": "Linux",
+        "architecture": mac_bridge.platform.machine(),
+        "python": mac_bridge.platform.python_version(),
+        "macos": mac_bridge.platform.mac_ver()[0],
+    }
+
+
+@pytest.fixture
+def encrypted(tmp_path):
+    sql = toolkit_module("sqlcipher_probe")
+    try:
+        sql.library()
+    except (OSError, RuntimeError):
+        pytest.skip("external SQLCipher not installed; pure adapter cases still run")
+    root = tmp_path / "db_storage"
+    (root / "message").mkdir(parents=True)
+    (root / "contact").mkdir()
+    keys = {}
+    reader_module = toolkit_module("wechat_db")
+    with ExitStack() as stack:
+        table = "Msg_" + __import__("hashlib").md5(b"friend").hexdigest()
+        writers = []
+        for name in ("message_0.db", "message_1.db"):
+            path = root / "message" / name
+            key = os.urandom(32).hex()
+            keys[str(path)] = key
+            db = stack.enter_context(sql.DB(path, key, fixture_write=True))
+            db.query(
+                "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; "
+                "CREATE TABLE Name2Id(user_name TEXT); "
+                "INSERT INTO Name2Id VALUES('self'),('friend'); "
+                f'CREATE TABLE "{table}"(local_id INTEGER PRIMARY KEY, server_id INTEGER, '
+                "local_type INTEGER, create_time INTEGER,real_sender_id INTEGER,"
+                "message_content BLOB); PRAGMA wal_checkpoint(TRUNCATE);"
+            )
+            writers.append(db)
+        key_file = tmp_path / "keys.json"
+        key_file.write_text(json.dumps(keys))
+        key_file.chmod(0o600)
+        yield SimpleNamespace(
+            sql=sql,
+            reader=reader_module.Reader(root, key_file),
+            root=root,
+            writers=writers,
+            table=table,
+            key_file=key_file,
+            keys=keys,
+        )
+
+
+def insert(fixture, local, text="same", shard=0):
+    fixture.writers[shard].query(
+        f"INSERT INTO \"{fixture.table}\" VALUES({local},0,1,100,2,x'{text.encode().hex()}')"
+    )
+
+
+def test_real_sqlcipher_readonly_wal_commit_checkpoint_reset(encrypted):
+    f = encrypted
+    path = f.root / "message/message_0.db"
+    main = path.read_bytes()
+    insert(f, 1)
+    assert path.read_bytes() == main
+    assert f.reader.read("friend", self_id="self")[0]["text"] == "same"
+    f.writers[0].query("BEGIN")
+    insert(f, 2, "uncommitted")
+    assert len(f.reader.read("friend", self_id="self")) == 1
+    f.writers[0].query("ROLLBACK")
+    with f.reader.open(path) as read:
+        with pytest.raises(RuntimeError):
+            read.query(f'DELETE FROM "{f.table}"')
+    f.writers[0].query("PRAGMA wal_checkpoint(TRUNCATE)")
+    insert(f, 3, "after reset")
+    assert [int(r["local_id"]) for r in f.reader.read("friend", self_id="self")] == [1, 3]
+    with pytest.raises(RuntimeError), f.sql.DB(path, "00" * 32):
+        pass
+
+
+def test_real_sqlcipher_cross_shard_pages_and_zstandard(encrypted):
+    f = encrypted
+    import zstandard
+
+    for i in range(1, 204):
+        insert(f, i)
+    insert(f, 1, shard=1)
+    raw = zstandard.ZstdCompressor().compress("压缩文本".encode())
+    f.writers[1].query(f"INSERT INTO \"{f.table}\" VALUES(2,0,1,100,2,x'{raw.hex()}')")
+    rows = f.reader.read(
+        "friend", limit=200, after={"message_0.db": 0, "message_1.db": 0}, self_id="self"
+    )
+    assert len(rows) == 202
+    assert (
+        next(r for r in rows if r["database"] == "message_1.db" and int(r["local_id"]) == 2)["text"]
+        == "压缩文本"
+    )
+    remaining = f.reader.read(
+        "friend", limit=200, after={"message_0.db": 200, "message_1.db": 2}, self_id="self"
+    )
+    assert len(remaining) == 3
+
+
+def test_failed_query_never_falls_back_to_old_snapshot(encrypted):
+    f = encrypted
+    insert(f, 1)
+    assert len(f.reader.read("friend", self_id="self")) == 1
+    # Correct manifest lookup with wrong key must fail on the next open.
+    f.key_file.write_text(json.dumps({name: "00" * 32 for name in f.keys}))
+    with pytest.raises(RuntimeError):
+        f.reader.read("friend", self_id="self")
+
+
+def test_native_human_resolution_never_resends_same_id(setup):
+    from wechat_reply_agent.adapters.wechat.mac_db import resolve_native_operation
+
+    settings, adapter, bridge = setup
+    bridge.behavior = "crash"
+    send = intent(adapter)
+    assert adapter.send_text(send).outcome == "unknown"
+    resolve_native_operation(settings, send.outbox_id, "discarded")
+    restored = MacAdapter(settings, adapter.profile, bridge)
+    restored.connect()
+    assert restored.send_text(send).outcome == "unknown"
+    assert bridge.attempts == 1
+    # Different ID becomes possible only after manual resolution.
+    bridge.behavior = "success"
+    restored.connect()
+    assert restored.send_text(intent(restored)).outcome == "verified_sent"
+    assert bridge.attempts == 2
+
+
+def test_mac_gate_rejects_windows_and_wrong_binding(setup, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_acceptance
+    from wechat_reply_agent.cli import write_private
+
+    settings, adapter, _ = setup
+    expected = {
+        "plan_version": "v5",
+        "platform": "macOS",
+        "foundation": "mac_db",
+        "binding_fingerprint": "correct",
+    }
+    monkeypatch.setattr(mac_acceptance, "context", lambda profile: expected)
+    monkeypatch.setattr(mac_acceptance.platform, "system", lambda: "Darwin")
+    path = settings.data_dir / "acceptance/mac/phase-5/g1.json"
+    for invalid in (
+        {"platform": "Windows", "foundation": "replica", "plan_version": "v4"},
+        {"binding_fingerprint": "wrong"},
+        {"recipient_confirmed": False},
+    ):
+        report = (
+            expected
+            | {"g1": "passed", "recipient_confirmed": True, "fresh_messages_verified": True}
+            | invalid
+        )
+        write_private(path, report)
+        with pytest.raises(AdapterError, match="matching_report_required"):
+            mac_acceptance.require_gate(settings, adapter.profile)
+    write_private(
+        path,
+        expected | {"g1": "passed", "recipient_confirmed": True, "fresh_messages_verified": True},
+    )
+    mac_acceptance.require_gate(settings, adapter.profile)
+
+
+def test_connect_does_not_bootstrap_or_load_gui_if_profile_missing(setup):
+    settings, _, _ = setup
+    from wechat_reply_agent.cli import create_adapter
+
+    adapter = create_adapter(settings, profile_required=False)
+    assert adapter.profile is None and adapter._bridge is None
+    with pytest.raises(AdapterError, match="account_binding_required"):
+        adapter.connect()
+    assert adapter._bridge is None
+
+
+def test_bootstrap_refuses_running_original_before_any_copy(tmp_path, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_bootstrap
+
+    monkeypatch.setattr(mac_bootstrap.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mac_bootstrap.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(mac_bootstrap.os, "geteuid", lambda: 501)
+    monkeypatch.setattr(
+        mac_bootstrap.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0)
+    )
+    with pytest.raises(AdapterError, match="quit_wechat_normally"):
+        mac_bootstrap.bootstrap(tmp_path, tmp_path / "state")
+    assert not (tmp_path / "state").exists()
+
+
+def test_cli_resolves_native_and_application_receipts_without_actions(setup):
+    from wechat_reply_agent.cli import execute, parser
+
+    settings, adapter, bridge = setup
+    bridge.behavior = "crash"
+    send = intent(adapter)
+    assert adapter.send_text(send).outcome == "unknown"
+    with closing(Ledger(settings.data_dir / "prototype.sqlite3")) as ledger:
+        ledger.db.execute(
+            "INSERT INTO outbox(id,input_key,scope,intent,state,created) VALUES(?,?,?,?,?,?)",
+            (send.outbox_id, "input", "scope", send.model_dump_json(), "unknown", 0),
+        )
+        ledger.db.commit()
+    args = parser().parse_args(
+        ["resolve", "--ledger", "--outbox-id", send.outbox_id, "--resolution", "discarded"]
+    )
+    assert execute(args, settings, adapter) == 0
+    assert bridge.attempts == 1
+    with closing(Ledger(settings.data_dir / "prototype.sqlite3")) as ledger:
+        assert (
+            ledger.db.execute(
+                "SELECT resolution FROM outbox WHERE id=?", (send.outbox_id,)
+            ).fetchone()[0]
+            == "discarded"
+        )
+
+
+def test_known_crash_blocks_bootstrap_before_running_any_native_command(tmp_path, monkeypatch):
+    from wechat_reply_agent.adapters.wechat import mac_bootstrap
+    from wechat_reply_agent.cli import write_private
+
+    monkeypatch.setattr(mac_bootstrap.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mac_bootstrap.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(mac_bootstrap.os, "geteuid", lambda: 501)
+    write_private(tmp_path / "bootstrap-blocked.json", {"reason": "native_debugger_crashed"})
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("native execution must remain disabled")
+
+    monkeypatch.setattr(mac_bootstrap.subprocess, "run", forbidden)
+    with pytest.raises(AdapterError, match="mac_lldb_repair_required"):
+        mac_bootstrap.bootstrap(tmp_path, tmp_path / "new-attempt")

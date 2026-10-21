@@ -56,3 +56,6 @@ coverage/
 /tmp/
 *.log
 .settings-private/
+
+# Upstream native build output (application builds under private DATA_DIR instead)
+/third_party/wechat_mac_toolkit/wechat-ui

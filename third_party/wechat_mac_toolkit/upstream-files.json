@@ -1,0 +1,38 @@
+{
+  "LICENSE": {
+    "sha256": "72380798af61d6131287b0dd3c8dc5345535df641002fece3a02d7ef109c5f8e",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/7d3ab8fb06f41434d2a341c36e68dcdf0a5adfbd/LICENSE"
+  },
+  "wechat_db.py": {
+    "sha256": "016fec5dd394df88ccf341032f2b131685bb195be5c186900e3c6577dd4e70e8",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/3452d9e0f1eaa5d9d5c441491eb574256c6ef254/wechat_db.py"
+  },
+  "sqlcipher_probe.py": {
+    "sha256": "5133370736ef2f5d0119c4cca942ecb56ec4db632b95f1c591d35d863e22f68b",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/42052af4c3969a9f0cd6135cf78307073240bb7c/sqlcipher_probe.py"
+  },
+  "capture_keys.py": {
+    "sha256": "0b0b9f9296bf02219c07537827ed9ce97671611ffeab36572bedb267a7704d65",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/021410a10b1a5d4139b18608eb05f0d7de2b5e36/capture_keys.py"
+  },
+  "bootstrap_keys.py": {
+    "sha256": "ce8596107df3ca3715c8b63b522bbcc84148207217fade3b642975323c65b31c",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/cf49447af8fa48b6d1b8709533e76a5524ab8da8/bootstrap_keys.py"
+  },
+  "Send.swift": {
+    "sha256": "dcdc54a97e227175e84ce24fe28d081e0e72c99724e520ef47446943cd12e28c",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/e7fd3158892a75efd6e781afb235d1baedb89305/Send.swift"
+  },
+  "WeChatUI.swift": {
+    "sha256": "a527c4f2b57bdb1563e2a0dfd8b5a4401c4732963da002310d3b958319418d02",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/67b3c7606b5602178707740e418ed2468eba90cc/WeChatUI.swift"
+  },
+  "build.sh": {
+    "sha256": "0dceaafdb555143c1f42f7b038ce93f1b4002b601474f9e2cd839e1e1a61bd65",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/bc4abd2fda41a7e6c5854dec62ad5373eb92ce52/build.sh"
+  },
+  "disk_inventory.py": {
+    "sha256": "09cc9dcc302af92891d18609d011723b042c841502095fe546e2f29dc4fb3cd6",
+    "url": "https://gist.githubusercontent.com/acmerfight/0a01249ef72970d07a2603dbb629e80f/raw/cd16e7a46d956a3b806b033a56bcc1c243cc2072/disk_inventory.py"
+  }
+}

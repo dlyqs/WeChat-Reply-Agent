@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 windows = ["wechatauto-replica==1.2.7.0; sys_platform == 'win32'"]
 mac = [
+  "zstandard>=0.23,<1; sys_platform == 'darwin'",
   "pyobjc-framework-Cocoa>=11,<13; sys_platform == 'darwin'",
   "pyobjc-framework-Quartz>=11,<13; sys_platform == 'darwin'",
   "pyobjc-framework-ApplicationServices>=11,<13; sys_platform == 'darwin'",
@@ -41,7 +42,7 @@ wechat-agent = "wechat_reply_agent.cli:main"
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/ui", "/third_party/wechatauto_replica", "/docs", "/scripts", "/tests", "/examples", "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES.md", "/.env.example"]
+include = ["/src", "/ui", "/third_party/wechatauto_replica", "/third_party/wechat_mac_toolkit", "/docs", "/scripts", "/tests", "/examples", "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES.md", "/.env.example"]
 exclude = ["/ui/node_modules"]
 
 [tool.ruff]

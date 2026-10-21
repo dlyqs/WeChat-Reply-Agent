@@ -1156,6 +1156,7 @@ mac = [
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
+    { name = "zstandard", marker = "sys_platform == 'darwin'" },
 ]
 windows = [
     { name = "wechatauto-replica", marker = "sys_platform == 'win32'" },
@@ -1181,6 +1182,7 @@ requires-dist = [
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin' and extra == 'mac'", specifier = ">=11,<13" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
     { name = "wechatauto-replica", marker = "sys_platform == 'win32' and extra == 'windows'", directory = "third_party/wechatauto_replica" },
+    { name = "zstandard", marker = "sys_platform == 'darwin' and extra == 'mac'", specifier = ">=0.23,<1" },
 ]
 provides-extras = ["windows", "mac"]
 

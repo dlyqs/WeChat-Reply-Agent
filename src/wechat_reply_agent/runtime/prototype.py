@@ -158,9 +158,10 @@ class Prototype:
 
     def report(self):
         return {
-            "phase": 2,
-            "plan_version": "v4",
-            "foundation": "replica",
+            "phase": 5 if self.settings.wechat_adapter == "mac_db" else 2,
+            "plan_version": "v5" if self.settings.wechat_adapter == "mac_db" else "v4",
+            "platform": "macOS" if self.settings.wechat_adapter == "mac_db" else "Windows",
+            "foundation": self.settings.wechat_adapter,
             "mode": self.settings.send_mode,
             "state": "running" if self.running else "stopped",
             "reason": self.reason,
@@ -204,4 +205,6 @@ class Prototype:
             self.stop("prototype_failed_degraded")
         finally:
             write_private(output, self.report())
+            if hasattr(self.adapter, "close"):
+                self.adapter.close()
         return 0 if self.reason in ("reply_limit", "duration_elapsed") else 2

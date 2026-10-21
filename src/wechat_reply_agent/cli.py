@@ -62,6 +62,17 @@ def probe_lock(data_dir: Path):
 
 
 def create_adapter(settings: Settings, *, profile_required: bool):
+    if settings.wechat_adapter == "mac_db":
+        from wechat_reply_agent.adapters.wechat.mac_db import MacAdapter
+        from wechat_reply_agent.adapters.wechat.mac_profile import load_mac_profile
+
+        try:
+            profile = load_mac_profile(settings.wechat_profile)
+        except AdapterError:
+            if profile_required:
+                raise
+            profile = None
+        return MacAdapter(settings, profile)
     if settings.wechat_adapter == "replica":
         from wechat_reply_agent.adapters.wechat.replica import ReplicaAdapter
         from wechat_reply_agent.adapters.wechat.replica_profile import load_replica_profile
@@ -101,6 +112,13 @@ def parser():
         "connect", help="Explicit key/cache/calibration/UIA initialization"
     )
     connect.add_argument("--output", type=Path, required=True)
+    bootstrap = commands.add_parser(
+        "mac-bootstrap", help="Explicit temporary-copy key capture; quit WeChat normally first"
+    )
+    bootstrap.add_argument("--db-root", type=Path, required=True)
+    bootstrap.add_argument("--state-dir", type=Path, required=True)
+    bootstrap.add_argument("--timeout", type=int, default=180)
+    bootstrap.add_argument("--output", type=Path, required=True)
     probe = commands.add_parser("probe", help="User-operated current test single-chat probes")
     actions = probe.add_subparsers(dest="action", required=True)
     read = actions.add_parser("read", help="Read visible messages; never scroll or select a chat")
@@ -135,9 +153,10 @@ def execute(args, settings: Settings, adapter):
             reason=health.reason,
         )
         report = {
-            "plan_version": "v4",
+            "plan_version": "v5" if settings.wechat_adapter == "mac_db" else "v4",
             "foundation": settings.wechat_adapter,
-            "phase": 1,
+            "platform": "macOS" if settings.wechat_adapter == "mac_db" else "Windows",
+            "phase": 5 if settings.wechat_adapter == "mac_db" else 1,
             "mode": "diagnostic",
             "health": health.model_dump(mode="json"),
             "g1": "not_tested",
@@ -146,6 +165,14 @@ def execute(args, settings: Settings, adapter):
         write_private(args.output, report)
         return 0 if health.healthy else 2
     with probe_lock(settings.data_dir):
+        if args.command == "mac-bootstrap":
+            from wechat_reply_agent.adapters.wechat.mac_bootstrap import bootstrap
+
+            if not args.state_dir.resolve().is_relative_to(settings.data_dir.resolve()):
+                raise AdapterError("bootstrap_must_use_private_data_dir")
+            result = bootstrap(args.db_root, args.state_dir, timeout=args.timeout)
+            write_private(args.output, result)
+            return 0
         if args.command == "prototype":
             import asyncio
 
@@ -153,22 +180,29 @@ def execute(args, settings: Settings, adapter):
             from wechat_reply_agent.runtime.prototype import Prototype
             from wechat_reply_agent.storage.prototype import Ledger
 
-            try:
-                gate = json.loads(
-                    (settings.data_dir / "acceptance/phase-1/report.json").read_text(
-                        encoding="utf-8"
+            if settings.wechat_adapter == "mac_db":
+                from wechat_reply_agent.adapters.wechat.mac_acceptance import require_gate
+
+                require_gate(settings, adapter.profile)
+            elif settings.wechat_adapter == "replica":
+                try:
+                    gate = json.loads(
+                        (settings.data_dir / "acceptance/phase-1/report.json").read_text(
+                            encoding="utf-8"
+                        )
                     )
-                )
-            except (ValueError, OSError):
-                raise AdapterError("g1_report_required") from None
-            if (
-                gate.get("g1") != "passed"
-                or gate.get("plan_version") != "v4"
-                or gate.get("foundation") != "replica"
-            ):
-                raise AdapterError("replica_g1_required")
-            if settings.wechat_adapter != "replica" or not settings.llm_api_key.get_secret_value():
-                raise AdapterError("replica_and_real_model_required")
+                except (ValueError, OSError):
+                    raise AdapterError("g1_report_required") from None
+                if (
+                    gate.get("g1") != "passed"
+                    or gate.get("plan_version") != "v4"
+                    or gate.get("foundation") != "replica"
+                ):
+                    raise AdapterError("replica_g1_required")
+            else:
+                raise AdapterError("native_adapter_required")
+            if not settings.llm_api_key.get_secret_value():
+                raise AdapterError("real_model_required")
             if settings.poll_interval_seconds < 10:
                 raise AdapterError("prototype_poll_minimum_10_seconds")
             settings.send_mode = args.mode
@@ -191,6 +225,21 @@ def execute(args, settings: Settings, adapter):
                         raise AdapterError("prototype_ledger_missing")
                     ledger = Ledger(ledger_path)
                     try:
+                        if settings.wechat_adapter == "mac_db":
+                            candidate = ledger.db.execute(
+                                "SELECT state,resolution FROM outbox WHERE id=?", (outbox_id,)
+                            ).fetchone()
+                            if (
+                                not candidate
+                                or candidate[0] not in ("unknown", "paused")
+                                or candidate[1] is not None
+                            ):
+                                raise AdapterError("unknown_outbox_missing")
+                            from wechat_reply_agent.adapters.wechat.mac_db import (
+                                resolve_native_operation,
+                            )
+
+                            resolve_native_operation(settings, outbox_id, args.resolution)
                         ledger.resolve(outbox_id, args.resolution)
                     finally:
                         ledger.close()
@@ -201,6 +250,10 @@ def execute(args, settings: Settings, adapter):
                 raise AdapterError("probe_receipt_missing_or_invalid") from None
             if record.get("outcome") != "unknown":
                 raise AdapterError("probe_not_uncertain")
+            if settings.wechat_adapter == "mac_db":
+                from wechat_reply_agent.adapters.wechat.mac_db import resolve_native_operation
+
+                resolve_native_operation(settings, outbox_id, args.resolution)
             record["resolution"] = args.resolution
             write_private(receipt, record)
             return 0
@@ -209,9 +262,10 @@ def execute(args, settings: Settings, adapter):
             write_private(
                 args.output,
                 {
-                    "phase": 1,
-                    "plan_version": "v4",
+                    "phase": 5 if settings.wechat_adapter == "mac_db" else 1,
+                    "plan_version": "v5" if settings.wechat_adapter == "mac_db" else "v4",
                     "foundation": settings.wechat_adapter,
+                    "platform": "macOS" if settings.wechat_adapter == "mac_db" else "Windows",
                     "mode": "connect",
                     "steps": result,
                     "g1": "not_tested",
@@ -230,16 +284,20 @@ def execute(args, settings: Settings, adapter):
                     raise AdapterError("probe_receipt_invalid_stop_required") from None
                 if record.get("outcome") == "unknown" and not record.get("resolution"):
                     raise AdapterError("unresolved_probe_stop_required")
-        if settings.wechat_adapter == "replica" and not (
+        if settings.wechat_adapter in ("replica", "mac_db") and not (
             args.action == "send" and settings.send_mode == "dry-run"
         ):
             adapter.connect()
         if args.action == "read":
-            events, cursor = adapter.poll_events()
+            if settings.wechat_adapter == "mac_db":
+                events, cursor = adapter.read_recent(args.contact, args.limit), None
+            else:
+                events, cursor = adapter.poll_events()
             report = {
-                "plan_version": "v4",
+                "plan_version": "v5" if settings.wechat_adapter == "mac_db" else "v4",
                 "foundation": settings.wechat_adapter,
-                "phase": 1,
+                "platform": "macOS" if settings.wechat_adapter == "mac_db" else "Windows",
+                "phase": 5 if settings.wechat_adapter == "mac_db" else 1,
                 "mode": "probe_read",
                 "g1": "not_tested",
                 "conversation": ref.model_dump(),
@@ -249,7 +307,7 @@ def execute(args, settings: Settings, adapter):
                     for e in events
                     if e.conversation_id == ref.conversation_id
                 ][-args.limit :],
-                "note": "Native database identities for Replica; private evidence only",
+                "note": "Native database identities; private evidence only",
             }
             write_private(args.output, report)
             emit("adapter.read", outcome="snapshot")
@@ -260,9 +318,10 @@ def execute(args, settings: Settings, adapter):
         # Persist before the key boundary. A crash leaves unknown, never an automatic retry.
         receipt = settings.data_dir / "probe-sends" / f"{intent.outbox_id}.json"
         report = {
-            "plan_version": "v4",
+            "plan_version": "v5" if settings.wechat_adapter == "mac_db" else "v4",
             "foundation": settings.wechat_adapter,
-            "phase": 1,
+            "platform": "macOS" if settings.wechat_adapter == "mac_db" else "Windows",
+            "phase": 5 if settings.wechat_adapter == "mac_db" else 1,
             "mode": intent.mode,
             "outbox_id": intent.outbox_id,
             "g1": "not_tested",
@@ -294,9 +353,12 @@ def execute(args, settings: Settings, adapter):
 def main(argv=None):
     args = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    settings = None
     try:
         settings = Settings()
         if args.command == "serve":
+            if settings.wechat_adapter == "mac_db":
+                raise AdapterError("mac_service_requires_phase6")
             import uvicorn
 
             from wechat_reply_agent.api.app import create_app
@@ -320,7 +382,7 @@ def main(argv=None):
                 )
             return 0
         adapter = create_adapter(
-            settings, profile_required=args.command not in ("doctor", "resolve")
+            settings, profile_required=args.command not in ("doctor", "resolve", "mac-bootstrap")
         )
         return execute(args, settings, adapter)
     except (ValidationError, SettingsError):
@@ -338,8 +400,14 @@ def main(argv=None):
             write_private(
                 output,
                 {
-                    "phase": 2 if args.command == "prototype" else 1,
-                    "plan_version": "v4",
+                    "phase": 5
+                    if settings and settings.wechat_adapter == "mac_db"
+                    else 2
+                    if args.command == "prototype"
+                    else 1,
+                    "plan_version": "v5"
+                    if settings and settings.wechat_adapter == "mac_db"
+                    else "v4",
                     "g2" if args.command == "prototype" else "g1": "not_tested",
                     "status": "failed",
                     "code": error,

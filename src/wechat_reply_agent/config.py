@@ -10,11 +10,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
-    wechat_adapter: Literal["replica", "mac_ax", "fake"] = "replica"
+    wechat_adapter: Literal["replica", "mac_db", "mac_ax", "fake"] = "replica"
     wechat_profile: Path = Path(".local/wechat-profile.json")
     wechat_account_ref: str = "local-account"
     wechat_allowlist: list[str] = Field(default_factory=list)
     wechat_db_root: Path | None = None
+    mac_bridge_path: Path | None = None
+    mac_verify_timeout_seconds: float = Field(default=15, ge=1, le=120)
     wechat_ocr_enabled: bool = True
     wechat_uia_gate_enabled: bool = True
     send_mode: Literal["dry-run", "live"] = "dry-run"

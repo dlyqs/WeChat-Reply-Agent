@@ -102,3 +102,17 @@ transitive build packages retain their distributed licenses. See
 [frontend-licenses.md](docs/frontend-licenses.md) and ui/package-lock.json.
 The bundled workbench includes THIRD_PARTY_LICENSES.txt, served at the same path
 by the local application. Original project code remains under the root LICENSE.
+
+## WeChat Mac toolkit (acmerfight)
+
+Selected source at `third_party/wechat_mac_toolkit/`, from
+https://gist.github.com/acmerfight/0a01249ef72970d07a2603dbb629e80f,
+revision `c98dbb10cf23c30e83d5d744905101b0880887a0`.
+Copyright (c) 2026 Contributors, MIT. The complete original license is retained at
+`third_party/wechat_mac_toolkit/LICENSE`; immutable URLs, original SHA256 hashes
+and local patch descriptions are in `upstream-files.json` and `UPSTREAM.md`.
+Application integration does not replace or restrict this upstream MIT license.
+SQLCipher (BSD-3-Clause) and its OpenSSL dependency are installed separately via
+Homebrew. Zstandard's Python distribution retains its BSD license and bundled
+Zstandard retains its upstream BSD/GPL dual license; exact version is in uv.lock.
+Apple SDKs/Swift/LLDB are external developer tools and are not redistributed.
