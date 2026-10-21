@@ -3,6 +3,7 @@
 import hashlib
 import json
 import time
+import unicodedata
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
 from wechat_reply_agent.adapters.wechat.mac_bridge import MacBridge, environment
@@ -32,6 +33,120 @@ class MacAdapter:
     def __init__(self, settings, profile=None, bridge=None):
         self.settings, self.profile, self._bridge = settings, profile, bridge
         self.connected = self.degraded = False
+
+    def runtime_binding(self):
+        from wechat_reply_agent.adapters.wechat.binding import (
+            BoundContact,
+            RuntimeBinding,
+            SourceFile,
+        )
+        from wechat_reply_agent.adapters.wechat.mac_bridge import source_identity
+
+        self.validate_profile()
+        p = self.profile
+        identity = source_identity(p.db_root)
+        files = {p.db_root / name: SourceFile.read(p.db_root / name) for name in identity}
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "platform": "macOS",
+                    "foundation": "mac_db",
+                    "account_ref": p.account_ref,
+                    "generation": p.account_generation,
+                    "self": p.self_username,
+                    "root": str(p.db_root.resolve()),
+                    "source": identity,
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        return RuntimeBinding(
+            p.account_ref,
+            p.account_generation,
+            fingerprint,
+            tuple(BoundContact(c.alias, c.username) for c in p.contacts),
+            files,
+        )
+
+    def runtime_info(self):
+        p = self.profile
+        degraded = bool(p and p.send_preflight == "ax-window-db")
+        return {
+            "platform": "macOS",
+            "foundation": "mac_db",
+            "wechat_version": p.wechat_version if p else None,
+            "ui_checks_degraded": degraded,
+            "window_mode": p.window_mode if p else None,
+            "send_preflight": p.send_preflight if p else None,
+            "max_text_characters": 1000 if degraded else 200,
+            "supports_newlines": degraded,
+            "target_navigation": "raise_bound_independent_window"
+            if degraded
+            else "manual_preselected_main_chat",
+        }
+
+    def require_runtime_acceptance(self, binding):
+        from wechat_reply_agent.adapters.wechat.mac_acceptance import require_runtime_acceptance
+
+        require_runtime_acceptance(self.settings, self.profile)
+
+    def prune_cache(self):
+        from wechat_reply_agent.storage.retention import prune_mac_cache
+
+        return prune_mac_cache(self.settings.data_dir, self.settings.retention_days)
+
+    def resolve_operation(self, outbox_id, resolution):
+        resolve_native_operation(self.settings, outbox_id, resolution)
+
+    def public_error(self, error):
+        from wechat_reply_agent.adapters.wechat.mac_bridge import NATIVE_FAILURES
+
+        codes = {
+            "mac_matching_degraded_acceptance_required",
+            "mac_account_security_stop_active",
+            "mac_client_version_changed",
+            "mac_process_changed_reconnect_required",
+            "mac_profile_missing_or_invalid",
+            "mac_unique_process_required",
+            "mac_original_process_required",
+            "mac_process_account_mismatch",
+            "mac_key_or_database_validation_failed",
+            "mac_bootstrap_required",
+            "mac_session_check_unavailable",
+            "mac_read_failed_degraded",
+            "mac_not_connected",
+            "cursor_binding_changed",
+            "database_boundary_changed",
+            "mac_g1_matching_report_required",
+            "mac_g2_matching_report_required",
+            "unresolved_native_operation_stop_required",
+            "mac_contact_title_ambiguous_or_changed",
+        }
+        codes |= {"mac_session_not_ready:" + reason for reason in NATIVE_FAILURES}
+        return (
+            str(error)
+            if isinstance(error, AdapterError) and str(error) in codes
+            else "worker_failed"
+        )
+
+    def validate_text(self, text):
+        info = self.runtime_info()
+        if (
+            not text.strip()
+            or len(text) > info["max_text_characters"]
+            or any(
+                (
+                    unicodedata.category(c) in ("Cc", "Cs")
+                    and not (c == "\n" and info["supports_newlines"])
+                )
+                for c in text
+            )
+        ):
+            raise AdapterError(
+                "mac_reply_text_unsupported"
+                if info["ui_checks_degraded"]
+                else "mac_prototype_text_unsupported"
+            )
 
     def health(self):
         env = environment(self.settings)
@@ -71,13 +186,16 @@ class MacAdapter:
                 window_conditions=(
                     "explicit degraded mode; unique focused independent AX window; "
                     "draft, pasted text and occlusion unverified; DB confirmation only; "
-                    "<=200 single-line characters"
+                    "<=1000 characters, newlines preserved"
                     if degraded_ui
                     else "manual preselected single friend; raise the bound main window; "
                     "frontmost unobscured main window; "
                     "<=200 characters, single line, exact OCR draft; no navigation"
                 ),
                 tested=False,
+                max_text_characters=1000 if degraded_ui else 200,
+                supports_newlines=degraded_ui,
+                ui_checks_degraded=degraded_ui,
             ),
         )
 
@@ -281,8 +399,7 @@ class MacAdapter:
             if intent.mode != self.settings.send_mode:
                 raise AdapterError("mode_mismatch")
             text = intent.reply_text
-            if len(text) > 200 or any(ord(c) < 32 or ord(c) == 127 for c in text):
-                raise AdapterError("mac_prototype_text_unsupported")
+            self.validate_text(text)
             if intent.mode == "dry-run":
                 return SendResult(outcome="not_sent", basis="dry_run")
             self._ready()

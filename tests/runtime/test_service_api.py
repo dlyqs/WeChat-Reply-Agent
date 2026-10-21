@@ -74,6 +74,34 @@ class Adapter:
         self.threads = []
         self.outcome = "verified_sent"
 
+    def runtime_binding(self):
+        from wechat_reply_agent.adapters.wechat.binding import BoundContact, RuntimeBinding
+
+        return RuntimeBinding(
+            "offline", "g1", self.profile.account, (BoundContact("test", "friend"),), {}
+        )
+
+    def runtime_info(self):
+        return {"platform": "Windows", "foundation": "replica", "max_text_characters": 1000}
+
+    def require_runtime_acceptance(self, binding):
+        pass
+
+    def prune_cache(self):
+        return 0
+
+    def validate_text(self, text):
+        pass
+
+    def close(self):
+        pass
+
+    def resolve_operation(self, outbox_id, resolution):
+        pass
+
+    def public_error(self, error):
+        return "worker_failed"
+
     def record(self):
         self.threads.append(threading.get_ident())
 

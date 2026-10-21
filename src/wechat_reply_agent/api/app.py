@@ -90,6 +90,7 @@ def create_app(store=None, service=None, ui_dir=None):
             "stop_before_diagnostic",
             "settings_field_not_editable",
             "settings_invalid",
+            "settings_field_not_applicable",
             "resolution_invalid",
             "unknown_outbox_missing",
             "stop_before_settings",
@@ -114,7 +115,7 @@ def create_app(store=None, service=None, ui_dir=None):
     def health():
         return {
             "status": "ok",
-            "foundation": "replica",
+            "foundation": store.settings.wechat_adapter,
             "runtime": service.snapshot(),
             "diagnostics": "explicit_post_required",
         }
@@ -174,7 +175,7 @@ def create_app(store=None, service=None, ui_dir=None):
                 raise AdapterError("stop_before_resolution")
             if set(body) != {"resolution"}:
                 raise AdapterError("resolution_invalid")
-            service.repo.resolve(outbox_id, body["resolution"])
+            service.resolve(outbox_id, body["resolution"])
             return {"id": outbox_id, "resolution": body["resolution"]}
 
     @app.get("/api/settings")

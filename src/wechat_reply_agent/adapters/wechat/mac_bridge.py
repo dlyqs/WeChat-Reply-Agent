@@ -150,6 +150,16 @@ def source_identity(root):
     return result
 
 
+def validate_contact_binding(reader, contact):
+    rows = [
+        row
+        for row in reader.resolve(contact.title)
+        if (row.get("remark") or row.get("nick_name")) == contact.title
+    ]
+    if len(rows) != 1 or rows[0].get("username") != contact.username:
+        raise AdapterError("mac_contact_title_ambiguous_or_changed")
+
+
 def bridge_path(settings):
     return settings.mac_bridge_path or settings.data_dir / "macos/bin/wechat-ui"
 
@@ -239,6 +249,7 @@ class MacBridge:
                 rows = reader.resolve(c.username)
                 if len(rows) != 1 or rows[0]["username"] != c.username:
                     raise RuntimeError
+                validate_contact_binding(reader, c)
                 reader.read(c.username, 1, self_id=p.self_username)
             self.reader = reader
             self.check()
@@ -314,6 +325,7 @@ class MacBridge:
         self.check()
         p = self.profile
         c = next(c for c in p.contacts if c.alias == intent.conversation.contact_alias)
+        validate_contact_binding(self.reader, c)
         state = self.settings.data_dir / "macos/send-state"
         private_directory(state)
         path = state / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.text"
@@ -393,6 +405,7 @@ class MacBridge:
             except (OSError, subprocess.TimeoutExpired):
                 return {"attempted": False, "code": "mac_focus_or_preflight_unavailable"}
             self.check()
+            validate_contact_binding(self.reader, c)
             receipt = (
                 state / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.dispatch.json"
             )

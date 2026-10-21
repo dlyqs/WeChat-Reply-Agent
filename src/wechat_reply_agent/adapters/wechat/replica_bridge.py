@@ -75,6 +75,11 @@ class ReplicaBridge:
         self.process_identity = None
         self.database_identities = None
 
+    def close(self):
+        # Release our references only; never quit the user's client or erase receipts.
+        self.db = self.gui = None
+        self.process_identity = self.database_identities = None
+
     def connect(self):
         if platform.system() != "Windows":
             raise AdapterError("windows_required")

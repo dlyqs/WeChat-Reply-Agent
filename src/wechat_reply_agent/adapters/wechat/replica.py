@@ -33,6 +33,94 @@ class ReplicaAdapter:
         self.connected = False
         self.degraded = False
 
+    def runtime_binding(self):
+        from wechat_reply_agent.adapters.wechat.binding import (
+            BoundContact,
+            RuntimeBinding,
+            SourceFile,
+        )
+
+        self.validate_profile()
+        p = self.profile
+        root = p.db_root / p.account / "db_storage"
+        files = {path: SourceFile.read(path) for path in sorted(root.rglob("*.db"))}
+        # Keep the exact Phase 3 fingerprint so existing Windows ledgers upgrade in place.
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "account_ref": p.account_ref,
+                    "generation": p.account_generation,
+                    "account": p.account,
+                    "self": p.self_username,
+                    "root": str(p.db_root.resolve()),
+                    "databases": [
+                        (str(path.relative_to(root)), (stamp.device, stamp.inode))
+                        for path, stamp in files.items()
+                    ],
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        return RuntimeBinding(
+            p.account_ref,
+            p.account_generation,
+            fingerprint,
+            tuple(BoundContact(c.alias, c.username) for c in p.contacts),
+            files,
+        )
+
+    def runtime_info(self):
+        return {
+            "platform": "Windows",
+            "foundation": "replica",
+            "wechat_version": self.profile.wechat_version if self.profile else None,
+            "ui_checks_degraded": False,
+            "max_text_characters": 1000,
+            "supports_newlines": True,
+            "target_navigation": "bound_single_chat",
+        }
+
+    def require_runtime_acceptance(self, binding):
+        from wechat_reply_agent.adapters.wechat.replica_acceptance import require_runtime_acceptance
+
+        require_runtime_acceptance(self.settings, self.profile, binding)
+
+    def prune_cache(self):
+        from wechat_reply_agent.storage.retention import prune_replica_cache
+
+        return prune_replica_cache(self.settings.data_dir, self.settings.retention_days)
+
+    def resolve_operation(self, outbox_id, resolution):
+        pass  # Windows uses the application outbox as its operation journal.
+
+    def public_error(self, error):
+        codes = {
+            "windows_matching_acceptance_required",
+            "replica_profile_missing_or_invalid",
+            "replica_connect_failed",
+            "windows_required",
+            "active_account_unverified",
+            "account_mismatch",
+            "active_account_changed",
+            "client_changed_reconnect_required",
+            "database_replaced_rebind_required",
+            "replica_read_failed_degraded",
+        }
+        return (
+            str(error)
+            if isinstance(error, AdapterError) and str(error) in codes
+            else "worker_failed"
+        )
+
+    def validate_text(self, text):
+        if not text.strip() or len(text) > 1000 or any(ord(c) < 32 and c != "\n" for c in text):
+            raise AdapterError("reply_text_unsupported")
+
+    def close(self):
+        if self._bridge and hasattr(self._bridge, "close"):
+            self._bridge.close()
+        self.connected = False
+
     def health(self):
         env = environment()
         ready = (
@@ -176,6 +264,7 @@ class ReplicaAdapter:
 
     def send_text(self, intent):
         try:
+            self.validate_text(intent.reply_text)
             ref = self.resolve_conversation(intent.conversation.contact_alias)
             if ref != intent.conversation:
                 raise AdapterError("target_mismatch")

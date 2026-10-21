@@ -82,6 +82,9 @@ class AdapterCapabilities(Contract):
     )
     direction_basis: str = "screenshot heuristic; uncertain/unsupported content is unknown"
     tested: bool = False
+    max_text_characters: int = 1000
+    supports_newlines: bool = True
+    ui_checks_degraded: bool = False
 
 
 class Health(Contract):

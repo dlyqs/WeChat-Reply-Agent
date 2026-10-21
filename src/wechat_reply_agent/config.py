@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     app_host: Literal["127.0.0.1", "localhost", "::1"] = "127.0.0.1"
     app_port: int = Field(default=8765, ge=1024, le=65535)
 
-    @field_validator("wechat_db_root", mode="before")
+    @field_validator("wechat_db_root", "mac_bridge_path", mode="before")
     @classmethod
     def optional_root(cls, value):
         return None if value == "" else value

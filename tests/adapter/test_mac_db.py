@@ -237,6 +237,9 @@ def test_native_focus_and_preflight_failures_never_dispatch(setup, monkeypatch, 
     settings, adapter, _ = setup
     bridge = mac_bridge.MacBridge(settings, adapter.profile)
     bridge.process = {"pid": 123}
+    bridge.reader = SimpleNamespace(
+        resolve=lambda title: [{"username": "friend", "remark": "Unique", "nick_name": ""}]
+    )
     monkeypatch.setattr(bridge, "check", lambda: None)
     calls = []
 
@@ -387,6 +390,9 @@ def test_native_security_notice_creates_durable_stop_before_input(setup, monkeyp
     settings, adapter, _ = setup
     bridge = mac_bridge.MacBridge(settings, adapter.profile)
     bridge.process = {"pid": 123}
+    bridge.reader = SimpleNamespace(
+        resolve=lambda title: [{"username": "friend", "remark": "Unique", "nick_name": ""}]
+    )
     monkeypatch.setattr(bridge, "check", lambda: None)
 
     def native(command, **kwargs):
@@ -418,6 +424,9 @@ def test_readonly_session_check_latches_security_prompt_without_activation(setup
     settings, adapter, _ = setup
     bridge = mac_bridge.MacBridge(settings, adapter.profile)
     bridge.process = {"pid": 123}
+    bridge.reader = SimpleNamespace(
+        resolve=lambda title: [{"username": "friend", "remark": "Unique", "nick_name": ""}]
+    )
     monkeypatch.setattr(bridge, "check", lambda: None)
 
     def native(command, **kwargs):
@@ -687,6 +696,9 @@ def test_degraded_bridge_pins_same_window_mode_through_focus_preflight_and_dispa
     )
     bridge = mac_bridge.MacBridge(settings, adapter.profile)
     bridge.process = {"pid": 123}
+    bridge.reader = SimpleNamespace(
+        resolve=lambda title: [{"username": "friend", "remark": "Unique", "nick_name": ""}]
+    )
     monkeypatch.setattr(bridge, "check", lambda: None)
     commands = []
 

@@ -355,7 +355,16 @@ func enter(_ pid:pid_t,command:Bool) throws {
 func validMessage(_ value:String) -> Bool {
     !value.trimmingCharacters(in:.whitespaces).isEmpty && value.unicodeScalars.count <= 200 && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
 }
+func validDegradedMessage(_ value:String) -> Bool {
+    !value.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && value.unicodeScalars.count <= 1000 &&
+    !value.unicodeScalars.contains { $0.properties.generalCategory == .control && $0.value != 10 }
+}
 func testSendUtilities() {
+    precondition(validDegradedMessage("今晚吃点清淡的吧。\nTake your time  🙂"))
+    precondition(validDegradedMessage("晚安，周末和家人一起散步吧 👨‍👩‍👧‍👦"))
+    precondition(validDegradedMessage(String(repeating:"晚",count:1000)))
+    precondition(!validDegradedMessage(String(repeating:"晚",count:1001)))
+    precondition(!validDegradedMessage("\n  ") && !validDegradedMessage("晚\t安") && !validDegradedMessage("晚\r安"))
     precondition(matchesWindowTitle("WeChat",mode:.main,chat:"friend"))
     precondition(!matchesWindowTitle("friend",mode:.main,chat:"friend"))
     precondition(matchesWindowTitle("friend",mode:.independent,chat:"friend"))
@@ -429,11 +438,11 @@ func sendMessage() async throws {
     guard textFile.isEmpty || option("--text","").isEmpty else { throw fail("choose_text_or_text_file") }
     let text = textFile.isEmpty ? option("--text","") : try String(contentsOfFile:textFile,encoding:.utf8)
     let key = option("--send-key","enter"), dry = CommandLine.arguments.contains("--dry-run")
-    guard !chat.isEmpty, validMessage(text), !id.isEmpty,
-          let top = Double(option("--composer-top","")), top.isFinite, top >= 0.45, top <= 0.88,
-          ["enter","cmd-enter"].contains(key) else { throw fail("send_requires_chat_text_id_and_calibrated_composer_top; text_must_be_single_line_and_at_most_200_characters") }
     let preflight = option("--preflight","visual")
     guard ["visual","ax-window-db"].contains(preflight) else { throw fail("invalid_send_preflight") }
+    guard !chat.isEmpty, (preflight == "ax-window-db" ? validDegradedMessage(text) : validMessage(text)), !id.isEmpty,
+          let top = Double(option("--composer-top","")), top.isFinite, top >= 0.45, top <= 0.88,
+          ["enter","cmd-enter"].contains(key) else { throw fail("send_requires_chat_text_id_and_calibrated_composer_top; text_must_be_single_line_and_at_most_200_characters") }
     if preflight == "ax-window-db" {
         try await sendWithoutCapture(chat:chat,text:text,id:id,top:top,key:key,dry:dry)
         return

@@ -14,6 +14,14 @@ from wechat_reply_agent.privacy import private_directory
 READ_ONLY = {"data_dir", "app_host", "app_port", "wechat_adapter"}
 
 
+def inactive_fields(adapter):
+    return (
+        {"wechat_uia_gate_enabled", "wechat_ocr_enabled"}
+        if adapter == "mac_db"
+        else {"mac_bridge_path", "mac_verify_timeout_seconds"}
+    )
+
+
 class SettingsStore:
     def __init__(self, path=Path(".env"), settings=None, session_fields=()):
         self.path = path
@@ -39,6 +47,8 @@ class SettingsStore:
                 for key in Settings.model_fields
             },
             "readonly": sorted(READ_ONLY),
+            "inactive": sorted(inactive_fields(self.settings.wechat_adapter)),
+            "platform": "macOS" if self.settings.wechat_adapter == "mac_db" else "Windows",
         }
 
     def patch(self, changes):
@@ -48,6 +58,8 @@ class SettingsStore:
             raise AdapterError("settings_invalid")
         if changes.keys() - Settings.model_fields.keys() or changes.keys() & READ_ONLY:
             raise AdapterError("settings_field_not_editable")
+        if changes.keys() & inactive_fields(self.settings.wechat_adapter):
+            raise AdapterError("settings_field_not_applicable")
         if changes.get("llm_api_key") in ("", None):
             changes.pop("llm_api_key", None)
         if clear:

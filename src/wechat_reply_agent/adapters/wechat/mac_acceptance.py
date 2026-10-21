@@ -69,3 +69,44 @@ def require_degraded_prototype(settings, profile):
     ):
         raise AdapterError("mac_explicit_degraded_profile_required")
     context(profile)
+
+
+def require_runtime_acceptance(settings, profile):
+    """Formal service uses the user's accepted local flow proof for explicit degraded mode."""
+    if profile.send_preflight == "visual":
+        require_gate(settings, profile, 1)
+        require_gate(settings, profile, 2)
+        return
+    require_degraded_prototype(settings, profile)
+    try:
+        directory = settings.data_dir / "acceptance/mac/phase-5"
+        report = json.loads((directory / "degraded-flow.json").read_text())
+        fixed = json.loads((directory / "degraded-fixed-send.json").read_text())
+        expected = context(profile)
+        if (
+            any(report.get(k) != v or fixed.get(k) != v for k, v in expected.items())
+            or report.get("status") != "passed"
+            or report.get("acceptance_mode") != "user_authorized_degraded_flow"
+            or report.get("user_confirmed_success") is not True
+            or report.get("recipient_confirmed") is not True
+            or report.get("real_model_rounds", 0) < 1
+            or fixed.get("outcome") != "verified_sent"
+            or fixed.get("basis") != "local_db_confirmed"
+        ):
+            raise ValueError
+        operation = (
+            settings.data_dir
+            / "macos/operations"
+            / (hashlib.sha256(fixed["outbox_id"].encode()).hexdigest() + ".json")
+        )
+        native = json.loads(operation.read_text())
+        if native.get("result", {}).get("outcome") != "verified_sent":
+            raise ValueError
+        for path in (settings.data_dir / "macos/operations").glob("*.json"):
+            operation = json.loads(path.read_text())
+            if not operation.get("resolution") and (
+                not operation.get("result") or operation["result"].get("outcome") == "unknown"
+            ):
+                raise AdapterError("unresolved_native_operation_stop_required")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        raise AdapterError("mac_matching_degraded_acceptance_required") from None

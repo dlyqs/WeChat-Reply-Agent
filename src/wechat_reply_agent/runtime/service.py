@@ -1,7 +1,5 @@
 """One application lifecycle; restarting always establishes a fresh baseline."""
 
-import hashlib
-import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -12,7 +10,6 @@ from wechat_reply_agent.runtime.worker import execute
 from wechat_reply_agent.storage.database import Ledger
 from wechat_reply_agent.storage.migrations import bind_identity
 from wechat_reply_agent.storage.repositories import Repository
-from wechat_reply_agent.storage.retention import prune_replica_cache
 
 
 class RuntimeService:
@@ -34,7 +31,8 @@ class RuntimeService:
         self.state, self.reason, self.connected = "stopped", "start_required", False
         self.generation = self.repo.runtime_state(self.state, self.reason)
         self.closed = False
-        self.native_files = {}
+        self.binding = None
+        self.adapter_info = {}
 
     @property
     def settings(self):
@@ -50,13 +48,8 @@ class RuntimeService:
     def check_database(self):
         if self._identity() != self.file_identity:
             raise AdapterError("application_database_replaced")
-        for path, identity in self.native_files.items():
-            try:
-                stat = path.stat()
-            except OSError:
-                raise AdapterError("native_database_replaced") from None
-            if (stat.st_dev, stat.st_ino) != identity:
-                raise AdapterError("native_database_replaced")
+        if self.binding:
+            self.binding.check_sources()
 
     def _same_database(self):
         try:
@@ -82,24 +75,12 @@ class RuntimeService:
                 "sent_this_run": self.runtime.sent_count if self.runtime else 0,
                 "max_replies": 3,
                 "initialization": public_steps,
+                "platform": self.adapter_info.get(
+                    "platform", "macOS" if self.settings.wechat_adapter == "mac_db" else "Windows"
+                ),
+                "foundation": self.settings.wechat_adapter,
+                "capabilities": self.adapter_info,
             }
-
-    def _gates(self):
-        try:
-            for phase in (1, 2):
-                report = json.loads(
-                    (self.settings.data_dir / f"acceptance/phase-{phase}/report.json").read_text(
-                        encoding="utf-8"
-                    )
-                )
-                if (
-                    report.get(f"g{phase}") != "passed"
-                    or report.get("foundation") != "replica"
-                    or report.get("plan_version") != "v4"
-                ):
-                    raise ValueError
-        except (OSError, ValueError):
-            raise AdapterError("g1_g2_reports_required") from None
 
     def start(self, resume=False):
         with self.guard:
@@ -114,7 +95,6 @@ class RuntimeService:
             if self.settings.poll_interval_seconds < 10:
                 raise AdapterError("poll_minimum_10_seconds")
             self.check_database()
-            self._gates()
             self.state, self.reason = "starting", "connect_requested"
             self.runtime = None
             self.generation += 1
@@ -124,44 +104,40 @@ class RuntimeService:
         return self.snapshot()
 
     def _work(self):
-        ledger = None
+        ledger = adapter = None
         try:
             self.check_database()
-            prune_replica_cache(self.settings.data_dir, self.settings.retention_days)
             adapter = self.adapter_factory(self.settings, profile_required=True)
-            if hasattr(adapter, "validate_profile"):
-                adapter.validate_profile()
             for alias in self.settings.wechat_allowlist:
                 adapter.resolve_conversation(alias)
-            profile = adapter.profile
-            root = profile.db_root / profile.account / "db_storage"
-            files = {}
-            for path in sorted(root.rglob("*.db")):
-                stat = path.stat()
-                files[path] = (stat.st_dev, stat.st_ino)
-            fingerprint = hashlib.sha256(
-                json.dumps(
-                    {
-                        "account_ref": profile.account_ref,
-                        "generation": profile.account_generation,
-                        "account": profile.account,
-                        "self": profile.self_username,
-                        "root": str(profile.db_root.resolve()),
-                        "databases": [
-                            (str(p.relative_to(root)), identity) for p, identity in files.items()
-                        ],
-                    },
-                    sort_keys=True,
-                ).encode()
-            ).hexdigest()
+            binding = adapter.runtime_binding()
+            adapter.require_runtime_acceptance(binding)
+            info = adapter.runtime_info()
+            if self.settings.max_reply_characters > info["max_text_characters"]:
+                raise AdapterError("reply_limit_exceeds_adapter_capability")
+            adapter.prune_cache()
             ledger = Ledger(self.path)
-            bind_identity(ledger.db, fingerprint, profile.account_ref, profile.account_generation)
-            self.native_files = files
-            scope = ":".join(
-                [profile.account_generation, profile.account_ref, self.settings.send_mode]
+            bind_identity(
+                ledger.db, binding.fingerprint, binding.account_ref, binding.account_generation
             )
             with ledger.db:
-                for contact in profile.contacts:
+                for key, value in {
+                    "platform": info["platform"],
+                    "foundation": info["foundation"],
+                }.items():
+                    previous = ledger.db.execute(
+                        "SELECT value FROM metadata WHERE key=?", (key,)
+                    ).fetchone()
+                    if previous and previous[0] != value:
+                        raise AdapterError("account_or_database_binding_changed")
+                    ledger.db.execute("INSERT OR IGNORE INTO metadata VALUES(?,?)", (key, value))
+            self.binding = binding
+            self.adapter_info = info
+            scope = ":".join(
+                [binding.account_generation, binding.account_ref, self.settings.send_mode]
+            )
+            with ledger.db:
+                for contact in binding.contacts:
                     ledger.db.execute(
                         "INSERT OR REPLACE INTO contacts VALUES(?,?,?)",
                         (scope, contact.alias, contact.username),
@@ -183,24 +159,30 @@ class RuntimeService:
                         "native_database_replaced",
                         "unresolved_outbox_stop_required",
                         "queue_full_degraded",
-                        "replica_profile_missing_or_invalid",
                         "account_binding_required",
                         "database_root_mismatch",
                         "database_root_missing",
+                        "reply_limit_exceeds_adapter_capability",
                     }
                     reason = (
                         str(exc)
                         if isinstance(exc, AdapterError) and str(exc) in known
+                        else adapter.public_error(exc)
+                        if adapter
                         else "worker_failed"
                     )
                     self.state, self.reason, self.connected = "degraded", reason, False
         finally:
-            if ledger:
-                ledger.close()
-            with self.guard:
-                self.connected = False
-                if self._same_database():
-                    self.generation = self.repo.runtime_state(self.state, self.reason)
+            try:
+                if adapter:
+                    adapter.close()
+            finally:
+                if ledger:
+                    ledger.close()
+                with self.guard:
+                    self.connected = False
+                    if self._same_database():
+                        self.generation = self.repo.runtime_state(self.state, self.reason)
 
     def halt(self, pause=False):
         # Send gate is acquired before guard to avoid inversion with worker snapshot updates.
@@ -234,17 +216,58 @@ class RuntimeService:
 
         def read_only():
             adapter = self.adapter_factory(self.settings, profile_required=False)
-            health = adapter.health()
-            # Do not publish raw upstream environment objects or local account paths.
-            return {
-                "healthy": health.healthy,
-                "reason": health.reason,
-                "capabilities": health.capabilities.model_dump(mode="json"),
-                "connected": False,
-                "initialization": "explicit_start_required",
-            }
+            try:
+                health = adapter.health()
+                self.adapter_info = adapter.runtime_info()
+                return {
+                    "healthy": health.healthy,
+                    "reason": health.reason,
+                    "platform": self.adapter_info["platform"],
+                    "foundation": self.settings.wechat_adapter,
+                    "capabilities": health.capabilities.model_dump(mode="json"),
+                    "permissions": {
+                        k: v
+                        for k, v in health.environment.items()
+                        if k
+                        in {
+                            "screen_locked",
+                            "screen_recording",
+                            "accessibility",
+                            "account_security_stop",
+                        }
+                    },
+                    "connected": False,
+                    "initialization": "explicit_start_required",
+                }
+            finally:
+                adapter.close()
 
         return self.executor.submit(read_only).result()
+
+    def resolve(self, outbox_id, resolution):
+        if self._identity() != self.file_identity:
+            raise AdapterError("application_database_replaced")
+        if resolution not in ("sent", "discarded"):
+            raise AdapterError("resolution_invalid")
+
+        def record_only():
+            ledger = Ledger(self.path)
+            adapter = None
+            try:
+                row = ledger.db.execute(
+                    "SELECT state,resolution FROM outbox WHERE id=?", (outbox_id,)
+                ).fetchone()
+                if not row or row[0] not in ("unknown", "paused") or row[1] is not None:
+                    raise AdapterError("unknown_outbox_missing")
+                adapter = self.adapter_factory(self.settings, profile_required=False)
+                adapter.resolve_operation(outbox_id, resolution)
+                ledger.resolve(outbox_id, resolution)
+            finally:
+                if adapter:
+                    adapter.close()
+                ledger.close()
+
+        return self.executor.submit(record_only).result()
 
     def close(self):
         if not self.closed:

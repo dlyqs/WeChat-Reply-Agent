@@ -15,9 +15,10 @@ from wechat_reply_agent.observability import emit
 class Prototype:
     def __init__(self, settings, adapter, model, ledger):
         self.settings, self.adapter, self.ledger = settings, adapter, ledger
+        self.binding = adapter.runtime_binding()
         self.graph = create_graph(settings, model)
         self.scope = ":".join(
-            [adapter.profile.account_generation, settings.wechat_account_ref, settings.send_mode]
+            [self.binding.account_generation, settings.wechat_account_ref, settings.send_mode]
         )
         self.generation = 0
         self.running = False
@@ -30,7 +31,7 @@ class Prototype:
         self.before_send = lambda: None
 
     def eligible(self, event):
-        p = self.adapter.profile
+        p = self.binding
         sessions = {
             self.adapter.resolve_conversation(a).conversation_id
             for a in self.settings.wechat_allowlist
@@ -108,6 +109,17 @@ class Prototype:
             self.complete_turn(batch, result, generation, model_ms)
 
     def complete_turn(self, batch, result, generation, model_ms):
+        if result.status == "ready":
+            try:
+                self.adapter.validate_text(result.reply_text)
+            except AdapterError:
+                result = result.model_copy(
+                    update={
+                        "status": "error",
+                        "reply_text": None,
+                        "reason": "output_unsupported_by_adapter",
+                    }
+                )
         if not self.running or generation != self.generation or time.monotonic() >= self.deadline:
             result = result.model_copy(
                 update={
@@ -124,9 +136,7 @@ class Prototype:
             and result.status == "ready"
         ):
             alias = next(
-                c.alias
-                for c in self.adapter.profile.contacts
-                if c.username == batch[0].conversation_id
+                c.alias for c in self.binding.contacts if c.username == batch[0].conversation_id
             )
             intent = SendIntent(
                 conversation=self.adapter.resolve_conversation(alias),
@@ -175,11 +185,7 @@ class Prototype:
             "note": "Human verification required. Summary includes earlier runs in this scope.",
         }
         if self.settings.wechat_adapter == "mac_db":
-            report.update(
-                send_preflight=self.adapter.profile.send_preflight,
-                window_mode=self.adapter.profile.window_mode,
-                ui_checks_degraded=self.adapter.profile.send_preflight != "visual",
-            )
+            report.update(self.adapter.runtime_info())
         return report
 
     async def run(self, duration, max_replies, output):

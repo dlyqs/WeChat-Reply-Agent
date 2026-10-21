@@ -12,6 +12,14 @@ type Runtime = {
   sent_this_run: number;
   max_replies: number;
   initialization: Record<string, string>;
+  platform: string;
+  foundation: string;
+  capabilities: {
+    ui_checks_degraded?: boolean;
+    max_text_characters?: number;
+    supports_newlines?: boolean;
+    target_navigation?: string;
+  };
 };
 type Conversation = {
   id: string;
@@ -51,6 +59,8 @@ type Settings = {
   values: Values;
   sources: Record<string, string>;
   readonly: string[];
+  inactive: string[];
+  platform: string;
 };
 type Page<T> = { items: T[] };
 const labels: Record<string, string> = {
@@ -96,6 +106,8 @@ const fieldLabels: Record<string, string> = {
   min_send_interval_seconds: "发送间隔（秒）",
   max_sends_per_minute: "每分钟发送上限",
   retention_days: "基座缓存保留天数",
+  mac_bridge_path: "Mac 原生桥路径",
+  mac_verify_timeout_seconds: "Mac 发送回读超时（秒）",
 };
 const text = (value: string) => labels[value] || value;
 async function api<T>(
@@ -269,6 +281,27 @@ function App() {
           </div>
         )}
         <Tabs.Content value="overview">
+          <section>
+            <h2>
+              {runtime?.platform || settings?.platform || "本机"} · 微信连接方式
+            </h2>
+            <p>
+              {runtime?.foundation === "mac_db"
+                ? "本地数据库读取与确认 · 独立聊天窗发送"
+                : "Windows Replica"}
+            </p>
+            {runtime?.capabilities.ui_checks_degraded && (
+              <p className="notice">
+                当前为已选择的降级模式：未核验空草稿、输入全文及窗口遮挡。请保持绑定聊天窗打开、输入框为空；发送结果按本地新增记录确认。
+              </p>
+            )}
+            {runtime?.capabilities.max_text_characters && (
+              <p>
+                文字能力上限 {runtime.capabilities.max_text_characters} 字 ·{" "}
+                {runtime.capabilities.supports_newlines ? "支持换行" : "仅单行"}
+              </p>
+            )}
+          </section>
           <section className="cards">
             <article>
               <small>发送模式</small>
@@ -302,8 +335,10 @@ function App() {
               <div>
                 <h2>运行控制</h2>
                 <p>
-                  开始会初始化基座、读取密钥缓存并按配置校准 /
-                  热激活；启动前历史不自动回复。
+                  {runtime?.foundation === "mac_db"
+                    ? "开始会校验已有密钥与绑定，不重新取钥；发送前自动切回已打开的绑定聊天窗。"
+                    : "开始会初始化基座、读取密钥缓存并按配置校准或热激活。"}
+                  启动前历史不自动回复。
                 </p>
               </div>
               <div className="actions">
@@ -598,12 +633,17 @@ function App() {
                         {settings.readonly.includes(name)
                           ? " · 启动参数只读"
                           : ""}
+                        {settings.inactive.includes(name)
+                          ? " · 当前平台不适用"
+                          : ""}
                       </small>
                       {typeof value === "boolean" ? (
                         <input
                           type="checkbox"
                           disabled={
-                            !editable || settings.readonly.includes(name)
+                            !editable ||
+                            settings.readonly.includes(name) ||
+                            settings.inactive.includes(name)
                           }
                           checked={Boolean(draft[name] ?? value)}
                           onChange={(e) =>
@@ -625,7 +665,9 @@ function App() {
                         <textarea
                           rows={name === "agent_persona" ? 4 : 1}
                           disabled={
-                            !editable || settings.readonly.includes(name)
+                            !editable ||
+                            settings.readonly.includes(name) ||
+                            settings.inactive.includes(name)
                           }
                           value={String(
                             draft[name] ??
@@ -639,7 +681,10 @@ function App() {
                               [name]:
                                 typeof value === "number"
                                   ? Number(e.target.value)
-                                  : name === "wechat_db_root" && !e.target.value
+                                  : [
+                                        "wechat_db_root",
+                                        "mac_bridge_path",
+                                      ].includes(name) && !e.target.value
                                     ? null
                                     : e.target.value,
                             })
@@ -692,9 +737,17 @@ function App() {
                       healthy: boolean;
                       reason: string;
                       capabilities: { send_confirmation: string };
+                      permissions: Record<string, boolean>;
                     }>("/diagnostics", "POST", {});
                     setDiagnostic(
-                      `${d.healthy ? "环境可用，仍需显式开始连接" : "环境尚未就绪"} · ${d.reason}\n${d.capabilities.send_confirmation}`,
+                      `${d.healthy ? "环境可用，仍需显式开始连接" : "环境尚未就绪"} · ${d.reason}\n${d.capabilities.send_confirmation}\n${Object.entries(
+                        d.permissions,
+                      )
+                        .map(
+                          ([name, enabled]) =>
+                            `${({ accessibility: "辅助功能", screen_recording: "屏幕录制权限", screen_locked: "桌面锁定", account_security_stop: "账号安全停发" } as Record<string, string>)[name] || name}：${enabled ? "是" : "否"}`,
+                        )
+                        .join(" · ")}`,
                     );
                   }, "诊断完成。")
                 }
@@ -706,8 +759,8 @@ function App() {
           </section>
         </Tabs.Content>
         <footer>
-          所有数据保存在本机 · 支持范围与真人验收见项目文档 · Phase 5 知识 /
-          长期记忆尚未接入
+          所有数据保存在本机 · 支持范围与人工验收见项目文档 · 知识 /
+          长期记忆尚未接入（Phase 7）
         </footer>
       </main>
     </Tabs.Root>

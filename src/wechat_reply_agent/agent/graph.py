@@ -78,9 +78,9 @@ def create_graph(settings, model):
         }
 
     def validate(state):
-        text = state["text"].strip()
+        text = state["text"]
         if (
-            not text
+            not text.strip()
             or len(text) > settings.max_reply_characters
             or any(ord(c) < 32 and c != "\n" for c in text)
         ):

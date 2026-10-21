@@ -59,6 +59,17 @@ class Adapter:
         self.sent = []
         self.outcome = "verified_sent"
 
+    def runtime_binding(self):
+        from wechat_reply_agent.adapters.wechat.binding import BoundContact, RuntimeBinding
+
+        return RuntimeBinding("account", "g1", "offline", (BoundContact("test", "friend"),), {})
+
+    def validate_text(self, text):
+        pass
+
+    def runtime_info(self):
+        return {"platform": "offline", "foundation": "fake", "max_text_characters": 1000}
+
     def connect(self):
         return {}
 

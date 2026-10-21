@@ -231,20 +231,13 @@ def execute(args, settings: Settings, adapter):
                 else:
                     require_gate(settings, adapter.profile)
             elif settings.wechat_adapter == "replica":
-                try:
-                    gate = json.loads(
-                        (settings.data_dir / "acceptance/phase-1/report.json").read_text(
-                            encoding="utf-8"
-                        )
-                    )
-                except (ValueError, OSError):
-                    raise AdapterError("g1_report_required") from None
-                if (
-                    gate.get("g1") != "passed"
-                    or gate.get("plan_version") != "v4"
-                    or gate.get("foundation") != "replica"
-                ):
-                    raise AdapterError("replica_g1_required")
+                from wechat_reply_agent.adapters.wechat.replica_acceptance import (
+                    require_runtime_acceptance,
+                )
+
+                require_runtime_acceptance(
+                    settings, adapter.profile, adapter.runtime_binding(), gates=(1,)
+                )
             else:
                 raise AdapterError("native_adapter_required")
             if not settings.llm_api_key.get_secret_value():
@@ -407,8 +400,8 @@ def main(argv=None):
     try:
         settings = Settings()
         if args.command == "serve":
-            if settings.wechat_adapter == "mac_db":
-                raise AdapterError("mac_service_requires_phase6")
+            if settings.wechat_adapter not in ("replica", "mac_db"):
+                raise AdapterError("native_adapter_required")
             import uvicorn
 
             from wechat_reply_agent.api.app import create_app
