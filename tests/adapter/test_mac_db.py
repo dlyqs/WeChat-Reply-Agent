@@ -86,6 +86,8 @@ def setup(tmp_path):
         wechat_build="1",
         account_confirmed=True,
         composer_top=0.7,
+        window_width=880,
+        window_height=640,
         contacts=(
             {
                 "alias": "test",
@@ -223,6 +225,51 @@ def test_preflight_refusal_proves_no_dispatch(setup):
     bridge.behavior = "refuse"
     result = adapter.send_text(intent(adapter))
     assert result.outcome == "not_sent" and result.basis == "draft_or_target_unverified"
+
+
+@pytest.mark.parametrize("stage", ["focus", "preflight", "timeout"])
+def test_native_focus_and_preflight_failures_never_dispatch(setup, monkeypatch, stage):
+    from wechat_reply_agent.adapters.wechat import mac_bridge
+
+    settings, adapter, _ = setup
+    bridge = mac_bridge.MacBridge(settings, adapter.profile)
+    bridge.process = {"pid": 123}
+    monkeypatch.setattr(bridge, "check", lambda: None)
+    calls = []
+
+    def native(command, **kwargs):
+        calls.append(command)
+        if stage == "timeout":
+            raise mac_bridge.subprocess.TimeoutExpired(command, 10)
+        if command[1] == "focus":
+            return SimpleNamespace(
+                returncode=2 if stage == "focus" else 0,
+                stdout='{"type":"error","reason":"wechat_activation_failed"}',
+            )
+        assert "--dry-run" in command, "failed preparation must never inject input"
+        return SimpleNamespace(
+            returncode=2,
+            stdout='{"type":"error","reason":"main_window_obscured"}',
+        )
+
+    monkeypatch.setattr(mac_bridge.subprocess, "run", native)
+    result = bridge.send_once(intent(adapter))
+    assert not result["attempted"]
+    assert calls[0][1] == "focus"
+    state = settings.data_dir / "macos/send-state"
+    assert not list(state.glob("*.dispatch.json"))
+    assert not list(state.glob("*.text"))
+    if stage == "preflight":
+        assert result["code"] == "mac_send_preflight_rejected:main_window_obscured"
+
+
+def test_native_failure_never_exports_arbitrary_diagnostic_text():
+    from wechat_reply_agent.adapters.wechat.mac_bridge import native_failure
+
+    result = SimpleNamespace(
+        stdout='{"type":"error","reason":"private message or key"}\n["private"]'
+    )
+    assert native_failure(result) == "native_command_failed"
 
 
 def test_prepared_receipt_from_crash_is_never_resent(setup):
@@ -484,3 +531,67 @@ def test_known_crash_blocks_bootstrap_before_running_any_native_command(tmp_path
     monkeypatch.setattr(mac_bootstrap.subprocess, "run", forbidden)
     with pytest.raises(AdapterError, match="mac_lldb_repair_required"):
         mac_bootstrap.bootstrap(tmp_path, tmp_path / "new-attempt")
+
+
+@pytest.mark.parametrize("change", ["account", "original", "temporary", "keys_exist"])
+def test_prepared_bootstrap_rejects_changed_binding(tmp_path, change):
+    import hashlib
+
+    from wechat_reply_agent.adapters.wechat.mac_bootstrap import prepared_report
+    from wechat_reply_agent.cli import write_private
+
+    root = tmp_path / "db_storage"
+    state = tmp_path / "bootstrap"
+    executable = state / "WeChat-trial.app/Contents/MacOS/WeChat"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"owned temporary fixture")
+    report = {
+        "db_root": str(root),
+        "original_executable_sha256": "original-hash",
+        "temporary_executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+    }
+    write_private(state / "bootstrap.json", report)
+    assert prepared_report(root, state, "original-hash") == report
+    if change == "account":
+        root = tmp_path / "other_account"
+    elif change == "original":
+        report["original_executable_sha256"] = "changed"
+        write_private(state / "bootstrap.json", report)
+    elif change == "temporary":
+        executable.write_bytes(b"changed temporary fixture")
+    else:
+        (state / "keys.json").write_text("{}")
+    with pytest.raises(AdapterError, match="prepared_copy_binding_invalid"):
+        prepared_report(root, state, "original-hash")
+
+
+def test_reader_excludes_fts_and_resource_databases(encrypted):
+    fixture = encrypted
+    insert(fixture, 1)
+    # These are independent WCDB indexes/resources, not numbered message shards.
+    # An unavailable key or custom tokenizer here must not block the selected chat.
+    for name in ("message_fts.db", "message_resource.db"):
+        (fixture.root / "message" / name).write_bytes(b"unrelated encrypted data")
+    assert len(fixture.reader.read("friend", self_id="self")) == 1
+    assert set(fixture.reader.snapshot("friend")["cursor"]) == {"message_0.db", "message_1.db"}
+
+
+def test_prepared_bootstrap_accepts_same_pinned_copy_after_user_move(tmp_path):
+    import hashlib
+
+    from wechat_reply_agent.adapters.wechat.mac_bootstrap import prepared_report
+    from wechat_reply_agent.cli import write_private
+
+    root, state = tmp_path / "db_storage", tmp_path / "private-state"
+    moved = tmp_path / "Downloads/WeChat-trial.app"
+    executable = moved / "Contents/MacOS/WeChat"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"exact owned copy")
+    report = {
+        "db_root": str(root),
+        "original_executable_sha256": "original",
+        "temporary_executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+    }
+    write_private(state / "bootstrap.json", report)
+    assert prepared_report(root, state, "original", moved) == report
+    assert executable.read_bytes() == b"exact owned copy"

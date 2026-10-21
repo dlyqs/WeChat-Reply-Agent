@@ -77,6 +77,8 @@ def bind(args):
                 ),
             ),
             composer_top=args.composer_top,
+            window_width=getattr(args, "window_width", None),
+            window_height=getattr(args, "window_height", None),
             send_key=args.send_key,
         )
         write_private(args.output, profile.model_dump(mode="json"))
@@ -92,6 +94,8 @@ def main():
     parser.add_argument("--wechat-id", required=True)
     parser.add_argument("--title", required=True)
     parser.add_argument("--composer-top", type=float)
+    parser.add_argument("--window-width", type=int)
+    parser.add_argument("--window-height", type=int)
     parser.add_argument("--send-key", choices=("enter", "cmd-enter"), default="enter")
     parser.add_argument("--output", type=Path, required=True)
     try:

@@ -61,7 +61,9 @@ class Reader:
     def paths(self, chat):
         table = 'Msg_' + hashlib.md5(chat.encode()).hexdigest()
         found = []
-        paths = sorted((self.root/'message').glob('message_*.db'))
+        paths = sorted(p for p in (self.root/'message').glob('message_*.db')
+                       if p.stem.removeprefix('message_').isascii()
+                       and p.stem.removeprefix('message_').isdigit())
         if not paths:
             raise RuntimeError('message_databases_missing')
         for path in paths:

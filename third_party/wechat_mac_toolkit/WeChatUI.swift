@@ -13,6 +13,14 @@ func emit(_ event: [String: Any]) {
     if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
        let string = String(data: data, encoding: .utf8) { print(string); fflush(stdout) }
 }
+func privatePNG(_ image:CGImage, path:String) throws {
+    guard FileManager.default.createFile(atPath:path,contents:nil,attributes:[.posixPermissions:0o600]),
+          let destination = CGImageDestinationCreateWithURL(URL(fileURLWithPath:path) as CFURL,
+              UTType.png.identifier as CFString,1,nil) else { throw fail("diagnostic_snapshot_failed") }
+    CGImageDestinationAddImage(destination,image,nil)
+    guard CGImageDestinationFinalize(destination) else { throw fail("diagnostic_snapshot_failed") }
+    try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:path)
+}
 func option(_ name: String, _ fallback: String) -> String {
     guard let i = CommandLine.arguments.firstIndex(of: name), i + 1 < CommandLine.arguments.count else { return fallback }
     return CommandLine.arguments[i + 1]
@@ -24,11 +32,11 @@ struct Line {
     var json: [String: Any] { ["text": text, "x": box.minX, "y": 1-box.maxY,
         "width": box.width, "height": box.height, "confidence": confidence] }
 }
-func recognize(_ image: CGImage) throws -> [Line] {
+func recognize(_ image: CGImage, languages:[String] = ["zh-Hans", "en-US"]) throws -> [Line] {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
-    request.recognitionLanguages = ["zh-Hans", "en-US"]
-    request.usesLanguageCorrection = true
+    request.recognitionLanguages = languages
+    request.usesLanguageCorrection = false
     try VNImageRequestHandler(cgImage: image).perform([request])
     return (request.results ?? []).compactMap {
         guard let text = $0.topCandidates(1).first else { return nil }
@@ -118,6 +126,12 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         do { try validateArguments(Array(CommandLine.arguments.dropFirst())) }
         catch { emit(["type":"error", "reason":error.localizedDescription]); exit(2) }
         if command == "doctor" { doctor(); return }
+        if command == "focus" {
+            do { try await focusWeChat() } catch {
+                emit(["type":"error", "reason":error.localizedDescription]); exit(2)
+            }
+            return
+        }
         if command == "send" {
             do { try await sendMessage() } catch {
                 emit(["type":"error", "reason":error.localizedDescription]); exit(2)
@@ -222,13 +236,9 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
                     let lines = try recognize(panel)
                     let ocrMS = Date().timeIntervalSince(beforeOCR)*1000
                     ocrTimes.append(ocrMS); ocrRuns += 1
-                    let headers = lines.filter { 1-$0.box.maxY < 0.12 }
-                    guard headers.contains(where: { normalized($0.text) == normalized(chat) && $0.confidence >= 0.5 }) else {
-                        if lastStatus != "unverified" { emit(["type":"blocked", "reason":"chat_title_not_verified", "expected":chat]) }
-                        lastStatus = "unverified"; previousLines = []; previousPixels = small
-                        if once { break }
-                        try await Task.sleep(nanoseconds: UInt64(interval*1_000_000_000)); continue
-                    }
+                    // Verify the header independently; whole-panel language inference can
+                    // confuse short ASCII names with visually similar capital letters.
+                    _ = try chatLeft(image,chat:chat)
                     let body = lines.filter { 1-$0.box.maxY >= 0.12 }
                     let texts = body.map(\.text)
                     let kind: String

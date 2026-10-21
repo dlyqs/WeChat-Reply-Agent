@@ -1,8 +1,8 @@
 # macOS DB 原型接入（Phase 5）
 
-2026-10-21。状态以 [执行计划](wechat-agent-plan.md) 为准。
+2026-10-22。状态以 [执行计划](wechat-agent-plan.md) 为准。
 当前实现与离线验证已落盘；Mac G1/G2 未通过，Phase 6 未进入。
-本机首次取钥被 Apple LLDB 的 SIGBUS 阻塞，没有真实发送或运行 live Agent。
+更新工具后真实取钥、原版恢复和五条新消息读取已通过；固定发送已获得新增本人全文回读确认，等待对端收件确认，尚未运行 live Agent。
 
 ## 已实现的边界
 
@@ -22,7 +22,13 @@ Windows extra 不安装 Mac 原生依赖，Mac 不加载 Replica 原生依赖。
 发送只支持人工预选的唯一测试好友、已校准输入区域、单行且不超过 200 字。
 应用保留 Windows 原有的 500 字默认上限；Mac 原型应单独配置 `MAX_REPLY_CHARACTERS=200`。
 不能精确 OCR 核验的文字、空白/布局、控制字符或超长输出拒绝，不能截断/拆分。
-原生桥检查固定进程、前台可见且无遮挡主窗、精确标题、空草稿、窗口几何和输入全文。
+live 发送前自动激活已绑定的微信进程，并通过 AXRaise 抬高唯一匹配校准尺寸的主窗口；
+必要时恢复该主窗的最小化状态。它不会更改其他应用或搜索联系人，也不是永久悬浮置顶。
+doctor/connect/应用 dry-run 不激活窗口；原生只读预检本身同样不激活。
+抬高之后，原生桥检查固定进程、前台可见且无遮挡主窗、精确标题、空草稿、窗口几何和输入全文。
+macOS 27 的透明 Dock 可能被系统报告为整屏窗口；仅当其真实 AX 面板可唯一确认且不与
+微信相交时排除透明区域，实际 Dock 遮挡、普通遮挡或未知布局仍拒绝。
+空草稿要求两张新画面通过原有严格检查，以等待光标闪烁和激活动画结束。
 发送前再次核对目标/草稿/焦点；仅按绑定的 enter 或 cmd-enter 一次。
 该限制尚不满足 Phase 6 的导航和完整文字能力对齐，不能宣称已支持 Mac 工作台。
 
@@ -64,7 +70,7 @@ uv run wechat-agent mac-bootstrap \
 不重签原版、不关闭 SIP、不使用 Hook；副本共享客户端状态，不能当成独立沙箱。
 bootstrap 失败不等于连接成功；恢复后仍需真实新来信验证。普通 connect/start 不取钥。
 
-### 当前工具链阻塞与恢复
+### 工具链故障与恢复记录
 
 本机 macOS 27.0.1、微信 4.1.15（270115）、Apple LLDB 1703 / Swift 6.2 / SDK 26.0。
 首次 capture 在 CreateTarget 的 Mach-O 符号解析中 SIGBUS，尚未启动临时微信进程，
@@ -77,6 +83,20 @@ bootstrap 失败不等于连接成功；恢复后仍需真实新来信验证。�
 原生命令前拒绝。需要先修复/更新匹配当前系统的 Apple 开发工具，单独验证其正常工作，
 再由明确的人工修复动作处理停用标记；不自动循环运行会崩溃的探针。
 不保证升级一定解决，恢复后仍须从取钥/原版恢复/新鲜度逐项重新验收。
+
+更新后的 SDK 27.0 / Apple LLDB 2103.0.34.103 / Swift 6.4 已通过默认系统目标创建。
+`scripts/acceptance/mac_toolchain_check.py` 随后用自有 C 程序和合成 SQLCipher 库，验证了
+Apple Python/LLDB 的启动、PBKDF 断点捕获、HMAC 验证和 SQLCipher 查询；返回码 0，
+没有访问微信。旧停用标记及证据已保留为 resolved。
+随后在用户正常退出及授权临时副本后，19/19 个数据库密钥通过 HMAC 验证，临时进程
+退出并禁用副本，原版哈希/签名保持并恢复运行。恢复原版后已读到五条新增来信及一条
+本人消息；数量、连续同文、顺序、方向和实际空格均经核对，重读不重复入库。
+复验命令（目录必须全新；所有测试材料仍是私有合成数据）：
+
+~~~sh
+uv run python scripts/acceptance/mac_toolchain_check.py \
+  --directory .local/acceptance/mac/phase-5/toolchain-check-<新标识>
+~~~
 
 ## 绑定、读取与发送探针
 
@@ -91,6 +111,7 @@ uv run python scripts/acceptance/bind_mac.py \
   --key-file .local/macos/bootstrap-<本次标识>/keys.json \
   --alias test-a --wechat-id '<测试好友微信号>' --title '<精确标题>' \
   --composer-top '<人工校准比例>' --send-key enter \
+  --window-width '<校准窗口宽度（点）>' --window-height '<校准窗口高度（点）>' \
   --output .local/macos/profile.json
 uv run wechat-agent connect --output .local/acceptance/mac/phase-5/connect.json
 uv run wechat-agent probe read --contact test-a --limit 5 \
@@ -104,6 +125,12 @@ uv run wechat-agent probe send --contact test-a --text '测试回复' --confirm-
 本人过滤、固定发送及对端收件等完成后，才可形成自己的 `g1.json`。
 Mac gate 逐项核对平台、基座/revision、系统/微信版本、绑定和源库指纹及人工收件事实，
 不接受 Windows v4 passed 报告。
+
+自动抬高窗口的实际原生只读预检已通过，剪贴板计数不变。固定发送曾在输入前因遮挡
+或空草稿检查拒绝，回执均为 not_sent；这些记录不能充当真实发送或收件成功。
+连续帧已确认光标闪烁，后续失败帧又检测到真实未发送草稿；用户清空后自动抬高窗口、一次固定发送及新增本人全文回读已通过，等待对端收件确认，
+G1/G2 不据此放行。原生准备失败会返回已知脱敏原因码，
+激活/预检失败或超时不会进入输入与回车路径。可能已经发送后的异常仍为 unknown。
 
 原型仍使用同一 LangGraph、模型客户端和账本：
 

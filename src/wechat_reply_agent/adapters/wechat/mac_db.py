@@ -59,7 +59,8 @@ class MacAdapter:
                 direction_basis="per-shard Name2Id mapping",
                 send_confirmation="new exact self record: local_db_confirmed; recipient unverified",
                 window_conditions=(
-                    "manual preselected single friend; frontmost unobscured main window; "
+                    "manual preselected single friend; automatically raise the bound main window; "
+                    "frontmost unobscured main window; "
                     "<=200 characters, single line, exact OCR draft; no navigation"
                 ),
                 tested=False,
@@ -261,7 +262,14 @@ class MacAdapter:
             if intent.mode == "dry-run":
                 return SendResult(outcome="not_sent", basis="dry_run")
             self._ready()
-            if self.profile.composer_top is None:
+            if any(
+                value is None
+                for value in (
+                    self.profile.composer_top,
+                    self.profile.window_width,
+                    self.profile.window_height,
+                )
+            ):
                 raise AdapterError("mac_composer_calibration_required")
             directory = self.settings.data_dir / "macos/operations"
             path = directory / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.json"

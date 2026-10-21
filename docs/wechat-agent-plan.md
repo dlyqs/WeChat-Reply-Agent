@@ -1,24 +1,24 @@
 # 个人微信 AI 回复 Agent 执行计划
 
-更新日期：2026-10-21（Asia/Shanghai）。计划版本：v5。
+更新日期：2026-10-22（Asia/Shanghai）。计划版本：v5。
 本文件是阶段状态、实施顺序和完成条件的唯一来源；代码导航见 [overview.md](overview.md)。
 
 ~~~text
 execution mode: execute_phases_5_6
 automatic start phase: 5
 automatic stop phase: 6 (requires phase 5 G1/G2)
-execution state: blocked_phase_5_native_bootstrap
+execution state: phase_5_fixed_send_verified_awaiting_recipient_confirmation
 conversation relay: off
-current change: implement mac_db prototype; bootstrap blocked by Apple LLDB SIGBUS
+current change: native keys and freshness verified; automatic window activation implemented
 last completed implementation scope: phase 1-4 on Windows
-next implementation phase: 5 (resume after Apple LLDB repair; no live sends yet)
+next implementation phase: 5 (recipient confirmation, model dry-run and three live rounds)
 windows foundation: wechatauto-replica 1.2.7.0
 windows upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 macOS reference: acmerfight/0a01249ef72970d07a2603dbb629e80f
 macOS reference revision: c98dbb10cf23c30e83d5d744905101b0880887a0
 ~~~
 
-v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。本次用户已明确授权 Phase 5–6，Phase 5 软件和合成验证已实施；首次取钥被 Apple LLDB 崩溃阻塞，尚未真实发送，Phase 6 未进入。具体完成事实见各阶段记录。
+v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。本次用户已明确授权 Phase 5–6，Phase 5 软件和合成验证已实施；更新开发工具后真实取钥和新消息读取已通过，固定发送仍在验收，Phase 6 未进入。具体完成事实见各阶段记录。
 
 ## 1. 交付目标与范围
 
@@ -66,7 +66,7 @@ doctor 必须保持只读：不构造会取钥或热激活的对象，不调用�
 
 参考版本固定为 Gist revision `c98dbb10cf23c30e83d5d744905101b0880887a0`（2026-10-20，MIT）；实施前核对文件哈希和完整许可。重点参考读取/取钥代码、Swift 界面桥和 `send_verified.py`；上游自测与本项目验收分开记录。
 
-上游记录为 macOS 15.6.1 / Apple Silicon / 微信 4.1.15；本机现状为 macOS 27.0.1 / arm64 / 微信 4.1.5（31960），尚无新路线实机通过证据。旧 AX 探针在此组合找不到消息列表与输入框，保留作历史；新通道不以这些 AX 子控件可见为前提。
+上游记录为 macOS 15.6.1 / Apple Silicon / 微信 4.1.15；本机现状为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115，App Store），取钥与新消息读取已通过，发送仍在验收。旧 AX 探针在此组合找不到消息列表与输入框，保留作历史；新通道不以这些 AX 子控件可见为前提。
 
 | 项目 | Mac 方案与边界 |
 | --- | --- |
@@ -180,7 +180,7 @@ Mac 新增集成约束：
 | `replay --suite <name> --output <json>` | 合成输入回放，结果标为 offline，不接触微信 |
 | `verify` / `package --video <path>` | 检查/打包已存在的真实产物，不启动客户端、不上传或推送 |
 
-Windows 已实现 doctor/connect/probe/resolve/prototype/serve。Mac 已实现 mac_db doctor/connect/probe/resolve/prototype、独立 mac-bootstrap 和 G1 报告识别，但真实取钥/收发未过；Mac serve 属于尚未进入的 Phase 6，当前明确拒绝。旧 mac_ax 只有历史探针。replay/verify/package 仍是后续目标，不能标为已可执行。Phase 3–4 干净安装验证脚本不是 Phase 9 的 verify/package 命令。
+Windows 已实现 doctor/connect/probe/resolve/prototype/serve。Mac 已实现 mac_db doctor/connect/probe/resolve/prototype、独立 mac-bootstrap 和 G1 报告识别，但真实发送与 G1/G2 未过；取钥和新消息读取已通过。Mac serve 属于尚未进入的 Phase 6，当前明确拒绝。旧 mac_ax 只有历史探针。replay/verify/package 仍是后续目标，不能标为已可执行。Phase 3–4 干净安装验证脚本不是 Phase 9 的 verify/package 命令。
 
 | 配置组 | 目标字段 |
 | --- | --- |
@@ -224,7 +224,7 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | Phase 2 | 最小 Agent 闭环 | 必需 | completed | LangGraph/SQLite 原型与 DeepSeek 三轮 G2 通过；达到 3 条上限后已停发 |
 | Phase 3 | 配置、持久化与运行控制 | 必需 | completed | 配置/迁移/单线程运行控制、故障回放及 Windows 干净目录锁安装通过 |
 | Phase 4 | 本地 API 与工作台 | 必需 | completed | API/React 工作台/serve、自动检查及用户确认的界面/真实微信状态同步验收通过 |
-| Phase 5 | macOS 固定收发与最小 Agent 原型 | 必需，新增 | blocked | 原型实现与 166 项测试通过；首次取钥在 LLDB CreateTarget 时 SIGBUS，G1/G2 未过 |
+| Phase 5 | macOS 固定收发与最小 Agent 原型 | 必需，新增 | in_progress | 原型实现与 166 项测试通过；更新后 SDK 27 / LLDB 2103 合成捕获通过，继续真实取钥，G1/G2 未过 |
 | Phase 6 | macOS 与 Windows 已有应用功能对齐 | 必需，新增 | pending | Phase 5 Mac G1/G2；完成正式服务/发送/工作台接入及 Windows 回归 |
 | Phase 7 | 知识检索与长期记忆 | 必需，原 Phase 5 | pending | Phase 6；在两平台共用的 Agent/API 上扩展 |
 | Phase 8 | 业务工具、文件与语音入口 | 可选，未选择，原 Phase 6 | pending | Phase 7；未选择则记录不纳入并转 Phase 9 |
@@ -329,11 +329,11 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 任务按顺序执行：
 
 - [x] 固定 Gist revision、核对 MIT 和必要源码/资源，记录来源与本地补丁；将 Reader 的 Zstandard 接入主项目支持的 Python，声明 SQLCipher/Swift/LLDB 依赖并先用合成数据验证。
-- [ ] 实现只读 doctor 和显式原生账号/好友绑定。复验已有密钥；确需首次捕获时执行受控临时副本 bootstrap，记录原版签名/路径、选定账号、超时、退出与恢复结果，密钥只落私有目录。
-- [ ] 实现 Mac 数据库读取、发送者/方向解析、消息身份和增量游标；启动建基线，读取结果与 inbox/游标事务提交后才推进消费确认；满批、坏库、旧快照和账号/源库变化有明确失败状态。
-- [ ] 实现人工预选单聊的原生发送桥，先 dry-run 再一次显式固定发送。原型允许短单行文本（先以不超过 200 字验证），输入前和发送前检查目标、空草稿、主窗/焦点和全文；发送快捷键事先配置，一次操作只尝试一次。
+- [x] 实现只读 doctor 和显式原生账号/好友绑定。复验已有密钥；确需首次捕获时执行受控临时副本 bootstrap，记录原版签名/路径、选定账号、超时、退出与恢复结果，密钥只落私有目录。
+- [x] 实现 Mac 数据库读取、发送者/方向解析、消息身份和增量游标；启动建基线，读取结果与 inbox/游标事务提交后才推进消费确认；满批、坏库、旧快照和账号/源库变化有明确失败状态。
+- [ ] 实现人工预选单聊的原生发送桥；按用户要求，live 前自动激活绑定进程并抬高主窗（非永久悬浮置顶），再核验遮挡/焦点。先 dry-run 再一次显式固定发送。原型允许短单行文本（先以不超过 200 字验证），输入前和发送前检查目标、空草稿、主窗/焦点和全文；发送快捷键事先配置，一次操作只尝试一次。
 - [ ] 以 outbox_id 驱动原生操作 ID，发送前保存数据库水位，发送后核对同会话新增本人记录和完整正文；返回应用三态，不把上游 already_sent/UI 成功直接映射为 verified_sent。异常/超时可能已发则 unknown，禁止换 ID 重试。
-- [ ] 提取 Prototype 所需的连接、账号代数、联系人与身份契约，扩展 CLI 工厂和原型 G1 检查以识别 mac_db；保留 Windows 现有入口、ID 和报告兼容，公共层改动先跑 Windows 合成回归，不另写一套模型循环。
+- [x] 提取 Prototype 所需的连接、账号代数、联系人与身份契约，扩展 CLI 工厂和原型 G1 检查以识别 mac_db；保留 Windows 现有入口、ID 和报告兼容，公共层改动先跑 Windows 合成回归，不另写一套模型循环。
 - [ ] Mac G1 通过后，用原有 LangGraph/CompatibleModel/账本执行有界 dry-run/live，沿用默认 15 秒轮询、至少 30 秒发送间隔、每分钟至多 2 次、最多 3 条；超长/原型不支持的输出拒发，不静默截断。
 - [ ] 记录环境、能力限制、合成测试、实机/人工结果及耗时，形成独立 Mac G1/G2 报告；完成后停止 worker，不把 Gist 的运行记录计入本项目 passed。
 
@@ -349,7 +349,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 完成条件与证据：Mac G1/G2 均通过，报告写入 `.local/acceptance/mac/phase-5/{g1,g2,report}.json`，含 `plan_version=v5`、`platform=macOS`、`foundation=mac_db`、Gist revision、准确环境和本机绑定指纹。未通过对应项为 failed/not_tested，并说明阻塞。取钥/可靠发送失败时留在本阶段，不进入 Phase 6，也不重试已经可能发送的操作。
 
-完成记录（2026-10-21，未完成）：用户已授权 Phase 5–6。固定 Gist/MIT/逐文件哈希内化、Python 3.12 Zstandard、只读 SQLCipher DB/WAL、分库分页与事务游标、独立 Mac profile/绑定脚本、Swift 桥构建/精确草稿与遮挡检查、原生 outbox 幂等/三态/人工处理和 Mac 原型 gate 已实现。166 项 pytest、12 项额外 SQLCipher 合成自检、Swift 编译/纯函数自检、只读 doctor 和 DeepSeek Flash 连接验证通过。实际为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115），完全磁盘访问授权后目录可读。首次临时副本取钥在 Apple LLDB 1703 创建目标的 Mach-O 符号解析中 SIGBUS，未捕获密钥；原版哈希/签名保持并已恢复。系统 true 目标也复现，同版 Xcode LLDB 同样失败；无依赖目标创建仅为线索，尚未验证能运行捕获。已写停用标记避免反复崩溃。P05-01 离线项通过；P05-02 取钥失败，P05-03–07 实机项 not_tested，G1 failed/G2 not_tested，未进入 Phase 6。详情见 [mac-probe.md](mac-probe.md)，私有证据在 `.local/acceptance/mac/phase-5/`。Windows 原有报告未改写。
+完成记录（2026-10-22，未完成）：固定 Gist/MIT/哈希内化、只读 SQLCipher DB/WAL、事务游标、独立绑定/bootstrap、Swift 桥、原生 outbox 幂等/三态及 Mac 原型 gate 已实现。176 项 pytest、Swift 编译/自检、合成加密库及工具链捕获检查通过。实际为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115，App Store）。SDK 27.0 / LLDB 2103 / Swift 6.4 解决旧 LLDB 1703 崩溃；受控临时副本取得 19/19 个 HMAC 有效密钥，原版哈希/签名保持、恢复并读到新消息。五条来信（含连续同文）、一条本人消息及空格、顺序、方向均已核对，重读不重复入库。新增 live 前自动激活/抬高绑定主窗、尺寸校验、标题 OCR 精确复核及透明 Dock 面板判定；实际原生只读预检通过。固定发送前的空草稿/遮挡拒绝均为 not_sent；已处理光标闪烁，真实草稿经用户清空后，自动抬高窗口、一次固定发送和新增本人全文回读已通过（verified_sent/local_db_confirmed），等待对端收件确认。P05-01/02/03/05 有对应合成或实机证据，P05-04 本机固定发送通过、对端收件待确认，G1/G2 未通过，P05-06/07 未完成，Phase 6 未进入。私有证据见 `.local/acceptance/mac/phase-5/`；Windows 原有报告未改写。
 
 ### Phase 6：macOS 与 Windows 已有应用功能对齐
 
@@ -480,4 +480,4 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 Phase 1–7 与 Phase 9 的必需任务、Windows 和 Mac 各自的 G1/G2、Phase 6 对齐验收、两平台工作台人工验收和真实视频齐备；Phase 8 仅对明确选择的项目验收。应用可分别从干净 Windows/Mac 源码包按平台步骤安装启动，原生读取/发送隔离，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、固定会话短文本原型、离线截图、模型控制台或阶段文档不能作为最终完成。
 
-当前交付事实为 Windows Phase 1–4 已完成，Mac Phase 5 软件已实现但首次取钥阻塞、G1/G2 未过，Phase 6 未开始。修复开发工具后继续 Phase 5 实机验收，再进入已授权 Phase 6；不自动实施 Phase 7–9。两平台测试均采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。
+当前交付事实为 Windows Phase 1–4 已完成，Mac Phase 5 取钥/读取/固定发送回读已通过，收件及 G1/G2 待验收，Phase 6 未开始。继续 Phase 5 发送/Agent 实机验收，再进入已授权 Phase 6；不自动实施 Phase 7–9。两平台测试均采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。

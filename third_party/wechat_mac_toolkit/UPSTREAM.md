@@ -21,7 +21,19 @@ Local patches:
 - Swift sender requires the pinned process, frontmost unobscured main window and fresh
   frames. It checks exact header/composer text instead of deleting spaces or applying
   compatibility normalization. It rechecks target, draft, geometry and focus at dispatch.
+- An explicit native focus step activates only the pinned WeChat process and raises its
+  uniquely calibrated AX main window before read-only preflight. It does not set a
+  persistent floating window level, search chats, type, or affect other applications.
+- Display-sized transparent Dock surfaces are excluded only when the system Dock's
+  unique AX panel is verified outside the target. Intersecting panels and unknown
+  layouts still block. Empty-draft checks require two fresh passing frames.
+- Short headers use isolated, upscaled, language-specific OCR with no expected-word
+  hints or language correction; the exact-match/confidence requirements remain.
+- Message reads select only ASCII-numbered message shards; FTS/resource databases
+  are not treated as chat shards. Integrity checks retain all databases actually used.
 - Temporary-copy bootstrap bounds child lifetime and records restoration on all exits.
+- Explicit prepared-copy resume checks pinned executable hashes and account root,
+  including an authorized relocated copy, without copying or signing it again.
 
 Application limits: Phase 5 only, manually selected single friend, <=200 Python
 characters, single line, no control characters. OCR must reproduce the full draft
@@ -29,8 +41,8 @@ exactly; unsupported glyphs/layouts are refused. No target navigation claimed.
 Only an independent new exact self-sent database record can confirm a send.
 Upstream UI/already-sent reports are never delivery evidence.
 
-Observed runtime blocker: Apple LLDB 1703 CreateTarget crashes in Mach-O symbol
+Resolved runtime blocker: Apple LLDB 1703 CreateTarget crashed in Mach-O symbol
 parsing on the current macOS 27 host, including a system true target. Application
-bootstrap records the crash, restores the original app and blocks repeated
-initialization until developer tools are repaired. No key extraction or native
-sending compatibility is claimed.
+bootstrap recorded the crash, restored the original app and blocked repeated
+initialization until developer tools were repaired. Updated LLDB 2103 passed synthetic
+capture and real local key verification. Native send acceptance is still pending.

@@ -40,8 +40,8 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
-本次用户明确要求 Phase 3–4；完成软件实现与自动验证后停止，不进入 Phase 5。工作台人工验收已由用户确认通过。
+本次用户授权 Phase 5–6；Mac G1/G2 通过后才进入 Phase 6，不进入 Phase 7–9。Windows Phase 4 工作台人工验收已由用户确认通过。
 
 ## Mac Phase 5 status
 
-`mac_db.py`, `mac_bridge.py`, `mac_profile.py`, `mac_bootstrap.py` and `mac_acceptance.py` implement the Mac prototype, durable native receipts and platform gates. `scripts/build_mac_bridge.py` builds the private Swift helper; `scripts/acceptance/bind_mac.py` binds one native account/friend. 166 tests and encrypted SQLCipher/WAL fixtures pass. Initial key capture is blocked by Apple LLDB SIGBUS before target launch; no Mac G1/G2 or Phase 6 completion is claimed. See [Mac setup](mac-probe.md).
+`mac_db.py`, `mac_bridge.py`, `mac_profile.py`, `mac_bootstrap.py` and `mac_acceptance.py` implement the Mac prototype, durable native receipts and platform gates. `scripts/build_mac_bridge.py` builds the private Swift helper; `scripts/acceptance/bind_mac.py` binds one native account/friend. 176 tests and the Swift self-test pass. Updated Apple developer tools resolved the LLDB crash; 19 database keys, original-client restoration, five fresh incoming messages and outgoing direction have been verified locally. Live sends now activate and raise only the bound main window, then run the existing target/draft/visibility checks. Fixed sending has a verified new exact self record, pending recipient confirmation; no Mac G1/G2 or Phase 6 completion is claimed. See [Mac setup](mac-probe.md).

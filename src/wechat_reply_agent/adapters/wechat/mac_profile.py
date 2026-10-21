@@ -34,6 +34,8 @@ class MacProfile(Contract):
     account_confirmed: bool = False
     contacts: tuple[MacContact, ...] = ()
     composer_top: float | None = Field(default=None, ge=0.45, le=0.88)
+    window_width: int | None = Field(default=None, ge=600)
+    window_height: int | None = Field(default=None, ge=450)
     send_key: Literal["enter", "cmd-enter"] = "enter"
 
     @model_validator(mode="after")

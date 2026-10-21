@@ -118,6 +118,14 @@ def parser():
     bootstrap.add_argument("--db-root", type=Path, required=True)
     bootstrap.add_argument("--state-dir", type=Path, required=True)
     bootstrap.add_argument("--timeout", type=int, default=180)
+    bootstrap.add_argument(
+        "--resume-prepared",
+        action="store_true",
+        help="Resume the same pinned copy after granting its data access permission",
+    )
+    bootstrap.add_argument(
+        "--prepared-app", type=Path, help="Exact authorized copy path; requires --resume-prepared"
+    )
     bootstrap.add_argument("--output", type=Path, required=True)
     probe = commands.add_parser("probe", help="User-operated current test single-chat probes")
     actions = probe.add_subparsers(dest="action", required=True)
@@ -170,7 +178,13 @@ def execute(args, settings: Settings, adapter):
 
             if not args.state_dir.resolve().is_relative_to(settings.data_dir.resolve()):
                 raise AdapterError("bootstrap_must_use_private_data_dir")
-            result = bootstrap(args.db_root, args.state_dir, timeout=args.timeout)
+            result = bootstrap(
+                args.db_root,
+                args.state_dir,
+                timeout=args.timeout,
+                resume_prepared=args.resume_prepared,
+                prepared_app=args.prepared_app,
+            )
             write_private(args.output, result)
             return 0
         if args.command == "prototype":

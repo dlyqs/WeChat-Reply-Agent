@@ -8,13 +8,40 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+from uuid import uuid4
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
 from wechat_reply_agent.adapters.wechat.mac_bridge import TOOLKIT, client_version, run
 from wechat_reply_agent.privacy import private_directory
 
 
-def bootstrap(root, state, app=Path("/Applications/WeChat.app"), timeout=180):
+def prepared_report(root, state, original_hash, shadow=None):
+    """Verify an explicitly resumed owned copy without altering its permission identity."""
+    try:
+        report = json.loads((state / "bootstrap.json").read_text())
+        shadow = shadow or state / "WeChat-trial.app"
+        actual = hashlib.sha256((shadow / "Contents/MacOS/WeChat").read_bytes()).hexdigest()
+        if (
+            report.get("db_root") != str(root)
+            or report.get("original_executable_sha256") != original_hash
+            or report.get("temporary_executable_sha256") != actual
+            or (state / "keys.json").exists()
+        ):
+            raise ValueError
+        return report
+    except (OSError, ValueError):
+        raise AdapterError("mac_prepared_copy_binding_invalid") from None
+
+
+def bootstrap(
+    root,
+    state,
+    app=Path("/Applications/WeChat.app"),
+    timeout=180,
+    *,
+    resume_prepared=False,
+    prepared_app=None,
+):
     from wechat_reply_agent.cli import write_private
 
     if platform.system() != "Darwin" or platform.machine() != "arm64" or os.geteuid() == 0:
@@ -31,7 +58,7 @@ def bootstrap(root, state, app=Path("/Applications/WeChat.app"), timeout=180):
         raise AdapterError("mac_database_access_denied_full_disk_access_required") from None
     if root.name != "db_storage" or not list(root.rglob("*.db")) or not 10 <= timeout <= 300:
         raise AdapterError("mac_bootstrap_arguments_invalid")
-    if state.exists() and list(state.iterdir()):
+    if not resume_prepared and state.exists() and list(state.iterdir()):
         raise AdapterError("mac_bootstrap_state_exists_use_fresh_directory")
     private_directory(state)
     version, build = client_version(app)
@@ -53,13 +80,31 @@ def bootstrap(root, state, app=Path("/Applications/WeChat.app"), timeout=180):
         "capture": "not_started",
         "restoration": "not_tested",
     }
+    if prepared_app and not resume_prepared:
+        raise AdapterError("prepared_app_requires_explicit_resume")
+    shadow = prepared_app.resolve(strict=True) if prepared_app else state / "WeChat-trial.app"
+    disabled = shadow.with_suffix(".disabled")
+    if disabled.exists():
+        raise AdapterError("mac_disabled_copy_exists")
+    if resume_prepared:
+        previous = prepared_report(root, state, original_hash, shadow)
+        write_private(state / f"bootstrap-before-resume-{uuid4().hex}.json", previous)
+        report["temporary_executable_sha256"] = previous["temporary_executable_sha256"]
+        report["resumed_after_permission_grant"] = True
     write_private(state / "bootstrap.json", report)
-    shadow, disabled = state / "WeChat-trial.app", state / "WeChat-trial.disabled"
+    report["temporary_app_path"] = str(shadow)
     process = None
     try:
-        run(["/usr/bin/ditto", str(app), str(shadow)], 90)
-        run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(shadow)], 60)
+        if not resume_prepared:
+            run(["/usr/bin/ditto", str(app), str(shadow)], 90)
+            run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(shadow)], 60)
         run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(shadow)], 30)
+        report["temporary_executable_sha256"] = hashlib.sha256(
+            (shadow / "Contents/MacOS/WeChat").read_bytes()
+        ).hexdigest()
+        log_path = state / (f"capture-{uuid4().hex}.jsonl" if resume_prepared else "capture.jsonl")
+        report["capture_log"] = log_path.name
+        write_private(state / "bootstrap.json", report)
         lldb_python = run(["/usr/bin/lldb", "-P"]).stdout.strip()
         # LLDB's Python is supplied by Apple, never the application's Python ABI.
         env = dict(os.environ, PYTHONPATH=lldb_python)
@@ -73,8 +118,8 @@ def bootstrap(root, state, app=Path("/Applications/WeChat.app"), timeout=180):
             ),
             flush=True,
         )
-        with (state / "capture.jsonl").open("x", encoding="utf-8") as log:
-            os.chmod(state / "capture.jsonl", 0o600)
+        with log_path.open("x", encoding="utf-8") as log:
+            os.chmod(log_path, 0o600)
             process = subprocess.Popen(
                 [
                     "/usr/bin/python3",

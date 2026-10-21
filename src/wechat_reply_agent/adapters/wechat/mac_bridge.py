@@ -16,6 +16,44 @@ from wechat_reply_agent.privacy import private_directory
 
 TOOLKIT = Path(__file__).resolve().parents[4] / "third_party/wechat_mac_toolkit"
 
+NATIVE_FAILURES = frozenset(
+    {
+        "screen_locked",
+        "accessibility_permission_required",
+        "screen_recording_and_accessibility_permissions_required",
+        "process_binding_changed",
+        "main_window_unavailable",
+        "calibrated_main_window_not_unique",
+        "main_window_restore_failed",
+        "wechat_activation_failed",
+        "main_window_raise_failed",
+        "wechat_lost_focus",
+        "main_window_obscured",
+        "main_window_not_visible",
+        "window_inventory_unavailable",
+        "expected_one_visible_main_window",
+        "window_must_fit_one_display",
+        "calibrated_window_size_changed",
+        "chat_title_not_verified",
+        "composer_not_empty_or_wrong_composer_top",
+        "same_text_already_visible",
+        "no_frame_after_filter_refresh",
+    }
+)
+
+
+def native_failure(result):
+    """Only return known error codes; native output can contain private diagnostics."""
+    for line in reversed(result.stdout.splitlines()):
+        try:
+            event = json.loads(line)
+            code = str(event.get("reason", "")).split(";", 1)[0]
+            if event.get("type") == "error" and code in NATIVE_FAILURES:
+                return code
+        except (ValueError, AttributeError):
+            pass
+    return "native_command_failed"
+
 
 def toolkit_module(name):
     """Use a private module name; never execute upstream command-line entry points."""
@@ -164,12 +202,11 @@ class MacBridge:
             raise AdapterError("mac_key_permissions_invalid")
         try:
             reader = toolkit_module("wechat_db").Reader(p.db_root, p.key_file)
-            for relative in self.identity:
-                if relative != "contact/contact.db" and not (
-                    relative.startswith("message/message_") and relative.endswith(".db")
-                ):
-                    continue
-                with reader.open(p.db_root / relative) as db:
+            required = {p.db_root / "contact/contact.db"}
+            for contact in p.contacts:
+                required.update(path for path, _ in reader.paths(contact.username))
+            for path in sorted(required):
+                with reader.open(path) as db:
                     if db.query("PRAGMA quick_check;") != [{"quick_check": "ok"}]:
                         raise RuntimeError
             for c in p.contacts:
@@ -240,6 +277,10 @@ class MacBridge:
                 intent.outbox_id,
                 "--composer-top",
                 str(p.composer_top),
+                "--window-width",
+                str(p.window_width),
+                "--window-height",
+                str(p.window_height),
                 "--state-dir",
                 str(state.resolve()),
                 "--send-key",
@@ -247,12 +288,43 @@ class MacBridge:
                 "--pid",
                 str(self.process["pid"]),
             ]
-            # Preflight has no activation, pasteboard access, click or key injection.
-            preflight = subprocess.run(
-                command + ["--dry-run"], capture_output=True, text=True, timeout=20
+            # Live sends explicitly raise only the bound WeChat main window. Doctor,
+            # connect and application dry-run never activate or change the desktop.
+            focus_command = [
+                command[0],
+                "focus",
+                "--pid",
+                str(self.process["pid"]),
+                "--window-width",
+                str(p.window_width),
+                "--window-height",
+                str(p.window_height),
+            ]
+            native_report = (
+                state / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.preflight.json"
             )
-            if preflight.returncode:
-                return {"attempted": False, "code": "mac_send_preflight_rejected"}
+            try:
+                focus = subprocess.run(focus_command, capture_output=True, text=True, timeout=10)
+                focus_code = native_failure(focus) if focus.returncode else "wechat_focused"
+                write_private(native_report, {"focus": focus_code})
+                if focus.returncode:
+                    return {"attempted": False, "code": "mac_focus_rejected:" + focus_code}
+                self.check()
+                # Preflight has no activation, pasteboard access, click or key injection.
+                preflight = subprocess.run(
+                    command + ["--dry-run"], capture_output=True, text=True, timeout=20
+                )
+                preflight_code = (
+                    native_failure(preflight) if preflight.returncode else "send_preflight_ok"
+                )
+                write_private(native_report, {"focus": focus_code, "preflight": preflight_code})
+                if preflight.returncode:
+                    return {
+                        "attempted": False,
+                        "code": "mac_send_preflight_rejected:" + preflight_code,
+                    }
+            except (OSError, subprocess.TimeoutExpired):
+                return {"attempted": False, "code": "mac_focus_or_preflight_unavailable"}
             self.check()
             receipt = (
                 state / f"{hashlib.sha256(intent.outbox_id.encode()).hexdigest()}.dispatch.json"

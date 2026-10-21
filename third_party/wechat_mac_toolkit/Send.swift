@@ -20,7 +20,8 @@ func validateArguments(_ args:[String]) throws {
     switch command {
     case "read": values = ["--chat","--snapshot","--composer-top"]
     case "watch": values = ["--chat","--snapshot","--composer-top","--seconds","--interval"]
-    case "send": values = ["--chat","--text","--text-file","--id","--composer-top","--state-dir","--send-key","--pid"]; flags = ["--dry-run"]
+    case "send": values = ["--chat","--text","--text-file","--id","--composer-top","--state-dir","--send-key","--pid","--window-width","--window-height"]; flags = ["--dry-run"]
+    case "focus": values = ["--pid","--window-width","--window-height"]
     case "help","doctor","self-test": values = []
     default: throw fail("unknown_command")
     }
@@ -38,6 +39,7 @@ func validateArguments(_ args:[String]) throws {
 func printUsage() {
     print("""
     wechat-ui doctor
+    wechat-ui focus --pid BOUND_PID --window-width POINTS --window-height POINTS
     wechat-ui read --chat 'Exact title' [--snapshot /path/image.png]
     wechat-ui watch --chat 'Exact title' [--seconds 30] [--interval 0.5]
     wechat-ui send --chat 'Exact title' --text 'Single-line text' --id UNIQUE_ID
@@ -60,14 +62,36 @@ func doctor() {
           "screen_locked":screenLocked(), "screen_recording":CGPreflightScreenCaptureAccess(), "accessibility":AXIsProcessTrusted(),
           "wechat_running":app != nil, "wechat_version":app?.bundleURL.flatMap { Bundle(url:$0)?.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String } ?? "unknown"])
 }
+func scaled(_ image:CGImage, factor:Int) throws -> CGImage {
+    guard let context = CGContext(data:nil,width:image.width*factor,height:image.height*factor,
+                                  bitsPerComponent:8,bytesPerRow:0,
+                                  space:CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { throw fail("image_scale_failed") }
+    context.interpolationQuality = .high
+    context.draw(image,in:CGRect(x:0,y:0,width:image.width*factor,height:image.height*factor))
+    guard let result = context.makeImage() else { throw fail("image_scale_failed") }
+    return result
+}
 func chatLeft(_ image:CGImage, chat:String) throws -> Double {
-    let header = image.cropping(to:CGRect(x:0,y:0,width:image.width,height:min(80,Int(Double(image.height)*0.10))))!
-    let matches = try recognize(header).filter {
-        $0.text == chat && $0.confidence >= 0.5 && $0.box.minX > 0.15
+    let header = try crop(image,CGRect(x:0,y:0,width:image.width,height:min(80,Int(Double(image.height)*0.10))))
+    let languages = chat.unicodeScalars.allSatisfy { $0.isASCII } ? ["en-US"] : ["zh-Hans","en-US"]
+    var matches:[Line] = []
+    // First pass only locates text. Identity requires a unique exact high-confidence
+    // result from the isolated second pass; no fuzzy matching or expected-word hints.
+    for line in try recognize(header) where line.box.minX > 0.15 {
+        let bounds = CGRect(x:Double(line.box.minX)*Double(header.width)-6,
+                            y:Double(1-line.box.maxY)*Double(header.height)-6,
+                            width:Double(line.box.width)*Double(header.width)+12,
+                            height:Double(line.box.height)*Double(header.height)+12)
+            .intersection(CGRect(x:0,y:0,width:header.width,height:header.height))
+        let isolated = try scaled(crop(header,bounds),factor:4)
+        let refined = try recognize(isolated,languages:languages)
+        if refined.count == 1 && refined[0].text == chat && refined[0].confidence >= 0.5 {
+            matches.append(line)
+        }
     }
     guard matches.count == 1 else { throw fail("chat_title_not_verified") }
-    // WeChat 4.x left-aligned chat header is approximately 16 pt from panel edge.
-    return max(0, Double(matches[0].box.minX) * Double(image.width) - 16.0)
+    return max(0,Double(matches[0].box.minX)*Double(image.width)-16)
 }
 func targetWindow() async throws -> (SCWindow, SCDisplay) {
     guard !screenLocked() else { throw fail("screen_locked") }
@@ -118,6 +142,28 @@ func composerEmpty(_ image:CGImage,left:Double,top:Double) throws -> Bool {
     let nonBackground = sample.filter { abs(Int($0)-background) > 35 }.count
     return Double(nonBackground)/Double(sample.count) < 0.001
 }
+func emptyComposerFrame(_ session:CaptureSession,chat:String,top:Double,pid:pid_t,reason:String) async throws -> (CGImage,Double) {
+    // Require two fresh empty frames. A blinking caret or activation animation
+    // may temporarily make a genuinely empty composer fail the pixel check.
+    var emptyFrames = 0
+    var last:CGImage?
+    for _ in 0..<8 {
+        try requireFrontmost(pid)
+        let image = try await waitImage(session)
+        last = image
+        let left = try chatLeft(image,chat:chat)
+        if try composerEmpty(image,left:left,top:top) { emptyFrames += 1 }
+        if emptyFrames == 2 { return (image,left) }
+        try await Task.sleep(for:.milliseconds(150))
+    }
+    if let last {
+        let path = URL(fileURLWithPath:option("--state-dir",".wechat-ui-state"),isDirectory:true)
+            .appendingPathComponent(digest(option("--id",""))+".composer-check.png").path
+        try? privatePNG(last,path:path)
+    }
+    emit(["type":"composer_check_failed","empty_frames":emptyFrames,"frames":8])
+    throw fail(reason)
+}
 func rgba(_ image:CGImage) -> [UInt8] {
     var bytes = [UInt8](repeating:0,count:image.width*image.height*4)
     bytes.withUnsafeMutableBytes { storage in
@@ -144,6 +190,46 @@ func outgoingContains(_ image:CGImage,left:Double,top:Double,text:String) throws
 }
 func requireFrontmost(_ pid:pid_t) throws {
     guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { throw fail("wechat_lost_focus") }
+}
+func axAttribute(_ element:AXUIElement, _ name:CFString) -> CFTypeRef? {
+    var value:CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element,name,&value) == .success else { return nil }
+    return value
+}
+// This is an explicit preparation step, separate from the read-only send preflight.
+// It never searches chats, changes a draft, injects a key or modifies another app.
+func focusWeChat() async throws {
+    guard !screenLocked() else { throw fail("screen_locked") }
+    guard AXIsProcessTrusted() else { throw fail("accessibility_permission_required") }
+    guard let pid = Int32(option("--pid","")),
+          let app = NSRunningApplication(processIdentifier:pid),
+          app.bundleIdentifier == "com.tencent.xinWeChat",
+          let width = Double(option("--window-width","")),
+          let height = Double(option("--window-height","")) else { throw fail("process_binding_changed") }
+    let root = AXUIElementCreateApplication(pid)
+    guard let windows = axAttribute(root,kAXWindowsAttribute as CFString) as? [AXUIElement] else { throw fail("main_window_unavailable") }
+    let matches = windows.filter { window in
+        guard let title = axAttribute(window,kAXTitleAttribute as CFString) as? String,
+              ["Weixin","WeChat","微信"].contains(title),
+              let raw = axAttribute(window,kAXSizeAttribute as CFString),
+              CFGetTypeID(raw) == AXValueGetTypeID() else { return false }
+        var size = CGSize.zero
+        return AXValueGetValue(raw as! AXValue,.cgSize,&size) && size.width == width && size.height == height
+    }
+    guard matches.count == 1 else { throw fail("calibrated_main_window_not_unique") }
+    let window = matches[0]
+    if axAttribute(window,kAXMinimizedAttribute as CFString) as? Bool == true {
+        guard AXUIElementSetAttributeValue(window,kAXMinimizedAttribute as CFString,kCFBooleanFalse) == .success else { throw fail("main_window_restore_failed") }
+    }
+    guard app.activate(options:[]) else { throw fail("wechat_activation_failed") }
+    guard AXUIElementPerformAction(window,kAXRaiseAction as CFString) == .success else { throw fail("main_window_raise_failed") }
+    for _ in 0..<20 {
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+            emit(["type":"wechat_focused","persistent_topmost":false]); return
+        }
+        try await Task.sleep(for:.milliseconds(100))
+    }
+    throw fail("wechat_activation_failed")
 }
 func clickPoint(_ point:CGPoint) throws {
     for kind in [CGEventType.leftMouseDown, .leftMouseUp] {
@@ -184,6 +270,11 @@ func testSendUtilities() {
     precondition(normalized("Ａ B　你好") == "AB你好")
     precondition(validMessage("本地测试 123") && !validMessage("a\nb") && !validMessage(""))
     precondition(digest("a") == digest("a") && digest("a") != digest("b"))
+    let screen = CGRect(x:-1920,y:-1080,width:1920,height:1080)
+    let panel = CGRect(x:-1800,y:-80,width:1600,height:80)
+    precondition(clearDockSurface(screen,panel:panel,target:CGRect(x:-1900,y:-1000,width:880,height:640)))
+    precondition(!clearDockSurface(screen,panel:panel,target:CGRect(x:-1900,y:-700,width:880,height:640)))
+    precondition(!clearDockSurface(panel,panel:panel,target:CGRect(x:-1900,y:-1000,width:880,height:640)))
 }
 // Journals intentionally contain hashes/status only; no chat names or message text.
 final class Journal {
@@ -227,15 +318,16 @@ func sendMessage() async throws {
         throw fail("id_already_attempted_"+status+"; inspect_WeChat_before_any_new_id")
     }
     let (window,display) = try await targetWindow()
+    guard let expectedWidth = Double(option("--window-width","")),
+          let expectedHeight = Double(option("--window-height","")),
+          expectedWidth == window.frame.width, expectedHeight == window.frame.height else { throw fail("calibrated_window_size_changed") }
     guard let owner = window.owningApplication, let app = NSRunningApplication(processIdentifier:owner.processID) else { throw fail("wechat_not_running") }
     guard let expectedPID = Int32(option("--pid","")), owner.processID == expectedPID else { throw fail("process_binding_changed") }
     try requireUnobscured(window, expectedPID)
     let session = CaptureSession()
     do {
         try await session.start(window:window,display:display,interval:0.25)
-        var image = try await waitImage(session)
-        var left = try chatLeft(image,chat:chat)
-        guard try composerEmpty(image,left:left,top:top) else { throw fail("composer_not_empty_or_wrong_composer_top") }
+        var (image,left) = try await emptyComposerFrame(session,chat:chat,top:top,pid:expectedPID,reason:"composer_not_empty_or_wrong_composer_top")
         guard try !outgoingContains(image,left:left,top:top,text:text) else { throw fail("same_text_already_visible; refusing_duplicate") }
         if dry {
             emit(["type":"send_preflight_ok","dry_run":true]); await session.stop(); return
@@ -247,8 +339,10 @@ func sendMessage() async throws {
         try requireFrontmost(owner.processID)
         let (current,_) = try await targetWindow()
         guard current.windowID == window.windowID && current.frame == window.frame else { throw fail("window_moved_before_typing") }
-        image = try await waitImage(session); left = try chatLeft(image,chat:chat)
-        guard try composerEmpty(image,left:left,top:top) else { throw fail("composer_changed_before_typing") }
+        (image,left) = try await emptyComposerFrame(session,chat:chat,top:top,pid:owner.processID,reason:"composer_changed_before_typing")
+        let (readyToType,_) = try await targetWindow()
+        guard readyToType.windowID == window.windowID && readyToType.frame == window.frame else { throw fail("window_moved_before_typing") }
+        try requireUnobscured(readyToType, owner.processID)
         let point = CGPoint(x:window.frame.minX+left+80,y:window.frame.minY+Double(image.height)*top+30)
         try clickPoint(point); try await Task.sleep(for:.milliseconds(100))
         try typeUnicode(text,pid:owner.processID)
@@ -285,6 +379,29 @@ func sendMessage() async throws {
 }
 
 // ScreenCaptureKit may capture a covered/background window: prove input visibility separately.
+func clearDockSurface(_ surface:CGRect,panel:CGRect,target:CGRect) -> Bool {
+    !panel.isEmpty && surface.contains(panel) && surface.contains(target) &&
+    surface.height > panel.height*2 && !panel.intersects(target)
+}
+func transparentDockSurface(_ info:[String:Any],bounds:CGRect,target:CGRect) -> Bool {
+    guard let pid = info[kCGWindowOwnerPID as String] as? pid_t,
+          NSRunningApplication(processIdentifier:pid)?.bundleIdentifier == "com.apple.dock",
+          info[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.dockWindow)),
+          info[kCGWindowName as String] as? String == "Dock" else { return false }
+    // macOS 27 reports a display-sized transparent Dock surface. Its one AXList
+    // exposes the real panel. Unknown layouts or an intersecting panel still block.
+    let root = AXUIElementCreateApplication(pid)
+    guard let children = axAttribute(root,kAXChildrenAttribute as CFString) as? [AXUIElement],
+          children.count == 1,
+          axAttribute(children[0],kAXRoleAttribute as CFString) as? String == kAXListRole,
+          let rawPoint = axAttribute(children[0],kAXPositionAttribute as CFString),
+          let rawSize = axAttribute(children[0],kAXSizeAttribute as CFString),
+          CFGetTypeID(rawPoint) == AXValueGetTypeID(), CFGetTypeID(rawSize) == AXValueGetTypeID() else { return false }
+    var point = CGPoint.zero, size = CGSize.zero
+    guard AXValueGetValue(rawPoint as! AXValue,.cgPoint,&point),
+          AXValueGetValue(rawSize as! AXValue,.cgSize,&size) else { return false }
+    return clearDockSurface(bounds,panel:CGRect(origin:point,size:size),target:target)
+}
 func requireUnobscured(_ target:SCWindow, _ pid:pid_t) throws {
     try requireFrontmost(pid)
     guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements], kCGNullWindowID) as? [[String:Any]] else { throw fail("window_inventory_unavailable") }
@@ -296,7 +413,10 @@ func requireUnobscured(_ target:SCWindow, _ pid:pid_t) throws {
               let bounds = info[kCGWindowBounds as String] as? [String:Any],
               let rect = CGRect(dictionaryRepresentation:bounds as CFDictionary) else { continue }
         // Ignore the system menu bar, reject every intersecting visible foreground surface.
-        if rect.height > 28 && rect.intersects(target.frame) { throw fail("main_window_obscured") }
+        if rect.height > 28 && rect.intersects(target.frame) {
+            if transparentDockSurface(info,bounds:rect,target:target.frame) { continue }
+            throw fail("main_window_obscured")
+        }
     }
     guard found else { throw fail("main_window_not_visible") }
 }
