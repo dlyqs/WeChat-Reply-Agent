@@ -5,8 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "wechat-reply-agent"
 version = "0.1.0"
-description = "Local macOS WeChat reply agent with explicit sending gates"
-license-files = ["THIRD_PARTY_NOTICES.md"]
+description = "Local WeChat reply agent with explicit sending gates"
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12,<3.14"
 dependencies = ["pydantic>=2.12,<3", "pydantic-settings>=2.11,<3"]
 

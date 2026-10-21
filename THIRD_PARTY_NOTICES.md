@@ -1,5 +1,11 @@
 # Third-party notices
 
+Original project code is offered under the PolyForm Noncommercial License 1.0.0
+in LICENSE. This does not replace or restrict the original licenses of the
+third-party material identified below or of separately installed dependencies.
+No wxauto/wxauto4 source code or binary is bundled with this project; the Windows
+probe uses documented APIs through a separately installed dependency.
+
 ## WeChat-MCP
 
 Adapted AX traversal, control identifiers, message-list lookup, input writing and
