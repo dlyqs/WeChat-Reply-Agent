@@ -9,6 +9,8 @@ from langsmith import tracing_context
 from wechat_reply_agent.adapters.wechat.base import AdapterError
 from wechat_reply_agent.agent.graph import create_graph
 from wechat_reply_agent.domain.messages import Direction, SendIntent, SendResult
+from wechat_reply_agent.knowledge.store import KnowledgeStore
+from wechat_reply_agent.memory.store import MemoryStore
 from wechat_reply_agent.observability import emit
 
 
@@ -16,9 +18,11 @@ class Prototype:
     def __init__(self, settings, adapter, model, ledger):
         self.settings, self.adapter, self.ledger = settings, adapter, ledger
         self.binding = adapter.runtime_binding()
-        self.graph = create_graph(settings, model)
         self.scope = ":".join(
             [self.binding.account_generation, settings.wechat_account_ref, settings.send_mode]
+        )
+        self.graph = create_graph(
+            settings, model, KnowledgeStore(ledger.path), MemoryStore(ledger.path), self.scope
         )
         self.generation = 0
         self.running = False
@@ -54,6 +58,12 @@ class Prototype:
             raise AdapterError("nonempty_allowlist_required")
         self.generation = self.ledger.begin_run()
         self.connection_steps = self.adapter.connect()
+        with self.ledger.db:
+            for contact in self.binding.contacts:
+                self.ledger.db.execute(
+                    "INSERT OR REPLACE INTO contacts VALUES(?,?,?)",
+                    (self.scope, contact.alias, contact.username),
+                )
         start = time.monotonic()
         events, cursor = self.adapter.poll_events(None)
         self.poll_ms = (time.monotonic() - start) * 1000
@@ -101,7 +111,7 @@ class Prototype:
                     "events": batch,
                     "history": self.ledger.history(self.scope, batch[0].conversation_id),
                 },
-                config={"recursion_limit": 8, "callbacks": []},
+                config={"recursion_limit": 16, "callbacks": []},
             )
         result = response["result"]
         model_ms = (time.monotonic() - started) * 1000

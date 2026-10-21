@@ -37,3 +37,9 @@ revision `c98dbb10cf23c30e83d5d744905101b0880887a0`（MIT，Copyright 2026 Contr
 不重写解密引擎。合成加密 DB/WAL 和原生桥编译/纯函数自检通过；真实首次取钥因
 Apple LLDB 创建目标时 SIGBUS 失败，尚无 Mac G1/G2，不标实机通道通过。
 具体运行/恢复边界见 [Mac 接入](mac-probe.md)。
+
+Phase 7（2026-10-22）新增 jieba 0.42.1，MIT，Copyright 2013 Sun Junyi；仅通过锁定依赖
+使用 Tokenizer/cut_for_search，配合标准 SQLite FTS5。未复制算法或字典；许可全文在
+THIRD_PARTY_NOTICES.md。分词不写系统共享缓存，文档与偏好只在私有应用库保存。
+Mac 后续 Phase 5–6 已通过用户授权的降级范围；本段以前的首次取钥失败为历史记录，
+不替代主计划的最新验收状态。Phase 7–9 原生回归和录像仍待用户验证。

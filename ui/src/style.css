@@ -364,6 +364,7 @@ footer {
   }
   aside [role="tablist"] {
     display: flex;
+    flex-wrap: wrap;
     margin-top: 20px;
   }
   .aside-note {

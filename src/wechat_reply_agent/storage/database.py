@@ -13,10 +13,11 @@ from wechat_reply_agent.privacy import private_directory
 
 class Ledger:
     def __init__(self, path: Path):
+        self.path = path
         private_directory(path.parent)
         self.db = sqlite3.connect(path, timeout=10)
         self.db.row_factory = sqlite3.Row
-        if self.db.execute("PRAGMA user_version").fetchone()[0] > 2:
+        if self.db.execute("PRAGMA user_version").fetchone()[0] > 3:
             self.db.close()
             raise AdapterError("database_version_unsupported")
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -144,6 +145,16 @@ class Ledger:
         refs = [e.event_id for e in batch]
         key = hashlib.sha256(json.dumps(sorted(refs)).encode()).hexdigest()
         with self.db:
+            if intent and result.memory_actions:
+                from wechat_reply_agent.memory.store import apply_changes
+
+                apply_changes(
+                    self.db, scope, batch[0].conversation_id, result.memory_actions, "explicit_chat"
+                )
+                self.db.execute(
+                    "DELETE FROM context WHERE scope=? AND conversation=?",
+                    (scope, batch[0].conversation_id),
+                )
             run = self.db.execute(
                 "INSERT INTO agent_runs(scope,input_refs,result,model_ms,poll_ms) "
                 "VALUES(?,?,?,?,?)",

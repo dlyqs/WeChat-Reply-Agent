@@ -10,13 +10,29 @@ from fastapi import Body, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings.exceptions import SettingsError
 from starlette.exceptions import HTTPException
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.knowledge.store import KnowledgeStore
+from wechat_reply_agent.memory.store import MemoryStore
 from wechat_reply_agent.runtime.service import RuntimeService
 from wechat_reply_agent.settings_store import SettingsStore
+
+
+class DocumentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+    content: str = Field(min_length=1, max_length=48_000)
+
+
+class MemoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: str = Field(min_length=1, max_length=500)
+    contact: str = Field(min_length=1, max_length=200)
+    key: str = Field(min_length=1, max_length=40)
+    value: str = Field(min_length=1, max_length=200)
 
 
 def failure(code, status=400):
@@ -30,6 +46,8 @@ def create_app(store=None, service=None, ui_dir=None):
     store = store or SettingsStore()
     service = service or RuntimeService(store)
     commands = threading.Lock()
+    knowledge = KnowledgeStore(service.path)
+    memory = MemoryStore(service.path)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -62,7 +80,15 @@ def create_app(store=None, service=None, ui_dir=None):
                     return failure("request_too_large", 413)
             request._body = bytes(body)
         try:
-            if request.url.path.startswith(("/api/conversations", "/api/runs", "/api/outbox")):
+            if request.url.path.startswith(
+                (
+                    "/api/conversations",
+                    "/api/runs",
+                    "/api/outbox",
+                    "/api/knowledge",
+                    "/api/memories",
+                )
+            ):
                 service.check_database()
             response = await call_next(request)
         except Exception:
@@ -95,9 +121,17 @@ def create_app(store=None, service=None, ui_dir=None):
             "unknown_outbox_missing",
             "stop_before_settings",
             "stop_before_resolution",
+            "stop_before_content_change",
+            "knowledge_document_invalid",
+            "knowledge_document_too_large",
+            "knowledge_capacity_reached",
+            "knowledge_document_not_found",
+            "memory_contact_not_found",
+            "memory_fact_invalid",
+            "memory_capacity_reached",
         }
         code = str(exc) if str(exc) in allowed else "operation_rejected"
-        return failure(code, 404 if code == "run_not_found" else 409)
+        return failure(code, 404 if code.endswith("_not_found") else 409)
 
     async def invalid(request, exc):
         return failure("request_invalid", 422)
@@ -193,6 +227,60 @@ def create_app(store=None, service=None, ui_dir=None):
     def diagnostics():
         with commands:
             return service.diagnostic()
+
+    def require_content_edit():
+        if service.snapshot()["state"] not in ("stopped", "paused", "degraded"):
+            raise AdapterError("stop_before_content_change")
+
+    @app.get("/api/knowledge/documents")
+    def documents(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
+        return {"items": knowledge.documents(limit, offset), "limit": limit, "offset": offset}
+
+    @app.post("/api/knowledge/documents")
+    def import_document(body: DocumentInput):
+        with commands:
+            require_content_edit()
+            return knowledge.import_text(body.name, body.content)
+
+    @app.delete("/api/knowledge/documents/{document_id}")
+    def delete_document(document_id: str):
+        with commands:
+            require_content_edit()
+            knowledge.delete(document_id)
+            return {"id": document_id, "deleted": True}
+
+    @app.get("/api/knowledge/search")
+    def search_knowledge(q: str = Query(min_length=1, max_length=2000)):
+        return {"items": knowledge.search(q)}
+
+    @app.get("/api/memories/contacts")
+    def memory_contacts():
+        return {"items": memory.contacts()}
+
+    @app.get("/api/memories")
+    def memories(
+        scope: str = Query(min_length=1, max_length=500),
+        contact: str = Query(min_length=1, max_length=200),
+    ):
+        return {"items": memory.read(scope, contact)}
+
+    @app.put("/api/memories")
+    def change_memory(body: MemoryInput):
+        with commands:
+            require_content_edit()
+            memory.change(body.scope, body.contact, body.key, body.value)
+            return {"key": body.key, "saved": True}
+
+    @app.delete("/api/memories")
+    def forget_memory(
+        scope: str = Query(min_length=1, max_length=500),
+        contact: str = Query(min_length=1, max_length=200),
+        key: str = Query(min_length=1, max_length=40),
+    ):
+        with commands:
+            require_content_edit()
+            memory.change(scope, contact, key, None)
+            return {"key": key, "deleted": True}
 
     ui = Path(ui_dir) if ui_dir else Path(__file__).resolve().parent.parent / "web"
     if (ui / "assets").is_dir():

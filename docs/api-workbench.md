@@ -1,6 +1,6 @@
 # 本地 API 与工作台
 
-Phase 3–4 与 Phase 6 实现说明，2026-10-22。阶段状态以 [主计划](wechat-agent-plan.md) 为准。
+Phase 3–4、6–7 实现说明，2026-10-22。阶段状态以 [主计划](wechat-agent-plan.md) 为准。
 
 运行 `uv run wechat-agent serve`，手动访问 `http://127.0.0.1:8765`。监听仅限 loopback，不打开浏览器、不初始化微信。前端构建产物在 Python 包中，无需 Node 开发服务器。服务启动时固定 stopped/dry-run；配置返回的 `session` 来源表示本次启动覆盖。
 
@@ -27,6 +27,14 @@ Phase 3–4 与 Phase 6 实现说明，2026-10-22。阶段状态以 [主计划](
 | GET /api/settings | values/sources/readonly/inactive/platform；密钥仅 llm_api_key_configured |
 | PATCH /api/settings | 变更字段；密钥空值保留，clear_llm_api_key=true 显式清除 |
 | POST /api/diagnostics | 停止/暂停/降级时只读平台/环境/能力与权限检查，不取钥、不热激活 |
+| GET /api/knowledge/documents | 知识文件元数据，limit/offset 分页；不返回磁盘路径 |
+| POST /api/knowledge/documents | `{name, content}`，UTF-8 TXT/Markdown；相同内容返回 duplicate；每份最多 48,000 字节 |
+| DELETE /api/knowledge/documents/{id} | 删除文件及 FTS5 片段，事务清除旧会话上下文，历史执行记录保留 |
+| GET /api/knowledge/search?q=... | 最多 3 个真实来源片段，最多 2,000 字查询；未命中返回空 items |
+| GET /api/memories/contacts | 已持久化绑定的联系人及范围，首次开始后出现；不连接微信 |
+| GET /api/memories?scope=...&contact=... | 限指定已绑定联系人，最多 20 条长期偏好 |
+| PUT /api/memories | `{scope, contact, key, value}` 新增/更正偏好；key 最多40字，value最多200字 |
+| DELETE /api/memories?scope=...&contact=...&key=... | 忘记偏好并清除该会话旧上下文；不删除历史收发证据 |
 
 运行与诊断请求可以使用空对象 `{}`。工作台每 3 秒读取状态，消息/会话每页 30 条，概览展示最近 50 条发送与 Agent 记录；API 支持继续分页。会话 id 必须配合 scope 使用，scope 隔离账号代数和发送模式。
 
@@ -70,3 +78,23 @@ Windows v5 报告核验基座 revision/版本/绑定；原 v4 报告只能结合
 2026-10-22 用户确认 Mac/降级提示、配置/诊断、会话/历史、dry-run/live、暂停/恢复/停止全部通过；从其他会话切回已打开的绑定独立窗、两轮正式回复、两条含 LF/emoji/长段落的固定消息完整收件及保持登录也确认通过。自动检查包括 222 项 Python 测试、前端类型/构建、Swift 自检与 Mac 干净源码安装；未自行打开页面或执行 UI 自动化。
 
 `scripts/acceptance/phase6_install_check.py --output <全新私有目录>` 按本机平台安装对应 extra，验证 CLI、Swift（仅 Mac）、stopped/dry-run HTTP 与静态资源，不连接或发送微信。Mac 已通过；Windows 本次原生安装/收发按用户选择待验证，合成兼容回归通过。严格 Mac 视觉 G1/G2 未通过。worker 已停止，服务每次重启强制 dry-run；后续阶段未启动。见 [Mac 接入](mac-probe.md)。
+
+## Phase 7 知识与记忆
+
+新增“知识与记忆”入口。导入/删除知识、保存/忘记偏好只允许 stopped/paused/degraded，
+运行时返回 `stop_before_content_change`；读接口可在运行中查看。DELETE 写请求同样需要来源头及 JSON `{}`。
+文件只读取用户选择的 UTF-8 内容，通过 JSON 传入；不接受任意服务端文件路径。总量最多 200 份/8 MB，
+单份 600 字分块并重叠 80 字，jieba 中文检索，Agent 每轮最多取 3 个来源、每个最多 220 字查询附近摘录，
+再按总输入预算丢弃旧历史/知识/偏好；预算不足为 `budget_omitted`，无命中为 `no_hits`。
+实际加入模型的来源写入 AgentResult 与执行记录，最终回复由应用附文件名和片段号；不接受模型伪造的来源标记。
+无命中提示由模型系统约束明确要求，实际回复效果保留用户验证。
+
+记忆保存在同一个私有 SQLite v3，范围包括账号代数、账号引用、发送模式及联系人。
+普通聊天不自动抽取；整条明确指令为“记住我的偏好：饮品=乌龙茶”“更正我的偏好：饮品=白茶”
+或“忘记我的偏好：饮品”。每轮最多 4 个变更，仅对合法输入、有效回复及当前运行代数提交；
+暂停后的迟到模型、失败、重复输入不写入。偏好与 AgentRun/outbox 同事务落库；发送 unknown 不回滚已明确保存的偏好。
+图只暂存变更，不直接写入或执行任意工具。更正/忘记清除该联系人短期上下文，删除知识清除全部短期上下文，
+避免旧答案重新影响模型；历史收发/执行证据仍保留在本机管理界面。
+
+前端静态类型/构建、真实 API CRUD 和模型输入/预算/来源/隔离测试通过；两平台用户界面与微信回复尚未验收。
+Phase 9 的离线回放、打包及最终人工步骤见 [交付清单](delivery-checklist.md)。

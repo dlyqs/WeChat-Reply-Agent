@@ -441,7 +441,7 @@ def test_migration_keeps_v1_ids_cursor_context_and_outbox(system):
     """)
     ledger.close()
     migrated = Ledger(service.path)
-    assert migrated.db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert migrated.db.execute("PRAGMA user_version").fetchone()[0] == 3
     assert [
         tuple(row) for row in migrated.db.execute("SELECT id,input_key,intent FROM outbox")
     ] == [tuple(row) for row in before]

@@ -78,6 +78,8 @@ class Repository:
             "status": result["status"],
             "reason": result.get("reason"),
             "reply_text": result.get("reply_text"),
+            "sources": result.get("sources", []),
+            "knowledge_status": result.get("knowledge_status", "disabled"),
             "model_ms": row["model_ms"],
             "poll_ms": row["poll_ms"],
             "send_ms": row["send_ms"],

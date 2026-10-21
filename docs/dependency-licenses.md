@@ -78,3 +78,6 @@ The vendored package and PNG assets retain Apache-2.0; see its LICENSE and UPSTR
 Phase 3–4 的新增后端依赖及完整许可文本见 [backend-api-licenses.md](backend-api-licenses.md)。
 前端与构建工具的锁定依赖及许可文本见 [frontend-licenses.md](frontend-licenses.md)。
 以上补充不改写 Phase 1–2 安装环境的历史版本记录。
+
+Phase 7 新增 jieba 0.42.1（MIT，Copyright 2013 Sun Junyi），完整许可见根 THIRD_PARTY_NOTICES.md。
+SQLite FTS5 使用 Python 标准库 SQLite，不新增向量数据库或服务。精确安装来源及哈希在 uv.lock。

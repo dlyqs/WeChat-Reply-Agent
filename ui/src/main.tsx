@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as Tabs from "@radix-ui/react-tabs";
 import "./style.css";
+import { api } from "./api";
+import { KnowledgeMemory } from "./KnowledgeMemory";
 
 type Runtime = {
   state: string;
@@ -44,6 +46,8 @@ type Run = {
   model_ms: number;
   send_ms: number | null;
   input_refs: string[];
+  sources: { source_ref: string; name: string; ordinal: number }[];
+  knowledge_status: string;
 };
 type Outbox = {
   id: string;
@@ -110,23 +114,6 @@ const fieldLabels: Record<string, string> = {
   mac_verify_timeout_seconds: "Mac 发送回读超时（秒）",
 };
 const text = (value: string) => labels[value] || value;
-async function api<T>(
-  path: string,
-  method = "GET",
-  body?: unknown,
-): Promise<T> {
-  const response = await fetch("/api" + path, {
-    method,
-    headers: { "Content-Type": "application/json", "X-WeChat-Agent": "1" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const result = await response.json();
-  if (!response.ok)
-    throw new Error(
-      `${result.code || "request_failed"} · ${result.trace_id || ""}`,
-    );
-  return result;
-}
 function App() {
   const [runtime, setRuntime] = useState<Runtime>();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -242,6 +229,7 @@ function App() {
         <Tabs.List aria-label="主导航">
           <Tabs.Trigger value="overview">概览</Tabs.Trigger>
           <Tabs.Trigger value="conversations">会话</Tabs.Trigger>
+          <Tabs.Trigger value="knowledge">知识与记忆</Tabs.Trigger>
           <Tabs.Trigger value="settings">设置</Tabs.Trigger>
         </Tabs.List>
         <div className="aside-note">
@@ -492,6 +480,19 @@ function App() {
                       : `${Math.round(r.send_ms)} ms`}
                   </small>
                   <p className="refs">输入：{r.input_refs.join(" / ")}</p>
+                  <p className="refs">
+                    知识检索：
+                    {r.knowledge_status === "matched"
+                      ? "命中"
+                      : r.knowledge_status === "no_hits"
+                        ? "未命中"
+                        : r.knowledge_status === "budget_omitted"
+                          ? "输入预算不足，未加入知识"
+                          : "未启用"}
+                    {r.sources
+                      ?.map((s) => ` · ${s.name}#${s.ordinal}`)
+                      .join("")}
+                  </p>
                   <button
                     className="secondary"
                     disabled={busy}
@@ -512,6 +513,9 @@ function App() {
               ))
             )}
           </section>
+        </Tabs.Content>
+        <Tabs.Content value="knowledge">
+          <KnowledgeMemory editable={Boolean(editable)} />
         </Tabs.Content>
         <Tabs.Content value="conversations">
           <section className="conversation-layout">
