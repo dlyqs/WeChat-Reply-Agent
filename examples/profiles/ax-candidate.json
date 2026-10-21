@@ -1,0 +1,23 @@
+{
+  "name": "ax-candidate-v1",
+  "account_ref": "local-account",
+  "account_confirmed": false,
+  "wechat_version": "REPLACE_WITH_EXACT_VERSION",
+  "distribution": "REPLACE_WITH_WEBSITE_OR_APP_STORE",
+  "language": "REPLACE_WITH_UI_LANGUAGE",
+  "messages_title": "Messages",
+  "contacts": [
+    {
+      "alias": "test-a",
+      "title": "REPLACE_WITH_UNIQUE_TEST_CONTACT_TITLE_A",
+      "local_conversation_id": "test-conversation-a",
+      "single_chat_confirmed": false
+    },
+    {
+      "alias": "test-b",
+      "title": "REPLACE_WITH_UNIQUE_TEST_CONTACT_TITLE_B",
+      "local_conversation_id": "test-conversation-b",
+      "single_chat_confirmed": false
+    }
+  ]
+}

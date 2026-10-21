@@ -1,0 +1,48 @@
+# Phase 1 / G1 原型报告
+
+日期：2026-10-21（Asia/Shanghai）。**G1 未验收，Phase 1 blocked。** 当前有可执行候选代码和离线证据，不代表微信已可接入。授权为自动执行 Phase 1–3；计划要求 G1→G2 顺序通过，当前不得进入 Phase 2/3。
+
+## 交付与选择
+
+- 最终包内实现 Settings、不可变事件/会话/发送契约、协议、FakeAdapter、MacAXAdapter、doctor/read/send CLI。
+- 审阅 A 的发送/布局实现后，先提供 B 的薄层 AX 候选供 G1：可以精确寻找会话标题、消息列表和输入框，并通过 AX 写入文本，减少校准坐标的需求。**这只是原型尝试，尚无证据证明 AX 比视觉更准确/更快，默认方案/profile 的最终落定留给 G1/G2。** 若 AX 不可用，停发并记录，不静默变成坐标点击。
+- 不自动打开或激活微信，不搜索/滚动/切换聊天，不改权限，不操作剪贴板，不启动 Agent/模型/UI。仅当前前台主窗口；用户预先选定单聊并聚焦空白输入框。
+- 联系人由用户核实账号与单聊、绑定唯一别名/完整标题/本地会话 ID。重复/未知、非白名单、焦点不明、最小化、已有草稿均拒绝。标题不能证明原生身份或排除不可见的同名联系人；必须用户核实。
+- 方向采用上游截图采样的保守启发式；输出 confidence 0.7 或 unknown。快照保留同文气泡不同出现序号，不宣称跨帧去重/稳定 source_message_id。
+- SendResult 在 Return 尝试后始终 unknown，只有真人对端确认才提供 G1 的收件证据。JSON 回执预写 + 单探针锁，不自动重试。该阶段不提供 Phase 2 的 SQLite 已处理记录或 Phase 5 的完整 outbox 恢复。
+
+## 自动验证事实
+
+执行 Python 3.12.14 / macOS arm64 开发环境；macOS 具体版本和微信版本/渠道/语言由用户在 G1 报告中采集，本次未运行真实诊断。全程未启动页面、Playwright、GitNexus、真实微信 probe/worker 或子 agent。
+
+| 检查 | 实际结果 | 边界 |
+| --- | --- | --- |
+| `uv sync --locked` 与 `--extra mac` | 通过 | uv 0.13.4 仅安装在忽略目录 `.local/tooling/`；未修改全局 Python |
+| `uv run pytest tests/adapter -q` | **47 passed** | 合成 AX 桥、像素和临时目录，不调用真实桌面 API |
+| `uv run ruff check src tests scripts` | 通过 | Python 静态检查 |
+| `uv run ruff format --check src tests scripts` | 通过 | 18 个 Python 文件 |
+| `uv lock --check` | 通过 | 应用/dev/mac 可选依赖锁一致 |
+| `uv run wechat-agent --help` | 通过 | doctor/probe 入口可用，无桌面调用 |
+| Mac extra 导入/符号检查 | 通过 | 只 import + hasattr，未调用原生 API；不是权限或适配实测 |
+| `uv build` 与归档清单检查 | 通过 | wheel/sdist；应用与 MIT notice 存在，无 `.env`/`.local` 私有数据 |
+
+本机离线 JUnit 证据：`.local/acceptance/phase-1/pytest.xml`。本机统一报告：`.local/acceptance/phase-1/report.json`。两者 Git 忽略；公开本页只保存脱敏事实。
+
+主要覆盖：默认 dry-run/空名单、环境优先级、非法名单/profile、未知身份拒绝 SendIntent、重复映射、完整事件字段、连续同文两个出现记录、权限不可用诊断、窗口/会话/焦点/草稿防护、写入后的竞态停发、按键异常 unknown 且不重试、原子报告保存失败不覆盖旧结果、0600/0700 权限、实例锁、日志/异常脱敏、懒加载原生模块和非 Mac 环境诊断分支。
+
+## G1 用户必验清单
+
+详细命令、延迟切回微信的方法、预期退出码和恢复见 [README](../README.md#用户执行-g1)。原始联系人/消息/截图只留本机，向助手仅反馈脱敏摘要。
+
+| 用例 | 前置/操作 | 通过标准 | 当前结果 |
+| --- | --- | --- | --- |
+| P01-01 | 合成事件/身份测试 | 字段齐全、未知身份不可发送 | passed（自动） |
+| P01-02 | 用户填写 profile，执行 doctor；检查无权限/未运行分支 | 环境准确；无权限只诊断，不发送、不改设置 | 离线分支通过；实机 not_tested |
+| P01-03 | 两联系人各发 5 条，含连续同文；手动逐个打开后 read；核对本人消息 | 会话、顺序、出现次数和每条方向正确 | not_tested |
+| P01-04 | 先 dry-run；live 对 A/B 各发 1 条；额外验证错会话/无焦点/草稿/最小化 | 两位真人收件确认正确对象；不确定情形拒绝；unknown 不自动重试 | not_tested |
+
+记录字段：macOS 版本、CPU、微信准确版本、官网/App Store、界面语言、profile 名称、窗口/解锁条件、两位测试联系人可用性、第二版本环境是否存在、日期、用例编号/实际结果/证据引用。第二版本此阶段只采集可用性，不要求安装或降级。
+
+**失败出口**：发生错对象/非白名单发送即停止，改回 dry-run/空名单；方向不可靠或找不到 AX 控件时保持 blocked，提交脱敏错误/版本信息。按计划同一问题最多两轮证据修正，仍失败才讨论视觉备选。不得把低置信度、mock、正常退出码或单纯按回车当作 G1 passed。
+
+**解除阻塞**：用户完成 P01-02 实机项、P01-03/04，提供脱敏证据并确认 G1；随后按保留的 auto_until 1–3 授权执行 Phase 2，G2 通过后才实施 Phase 3。无需再次授权这些范围内的开发。
