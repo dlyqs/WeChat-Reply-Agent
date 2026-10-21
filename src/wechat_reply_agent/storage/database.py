@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -17,6 +18,12 @@ class Ledger:
         private_directory(path.parent)
         self.db = sqlite3.connect(path, timeout=10)
         self.db.row_factory = sqlite3.Row
+        if os.name != "nt":
+            for private in (path, Path(str(path) + "-wal"), Path(str(path) + "-shm")):
+                try:
+                    private.chmod(0o600)
+                except FileNotFoundError:
+                    pass
         if self.db.execute("PRAGMA user_version").fetchone()[0] > 3:
             self.db.close()
             raise AdapterError("database_version_unsupported")

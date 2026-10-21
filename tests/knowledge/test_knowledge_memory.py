@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -83,6 +84,21 @@ def test_chinese_fts_sources_duplicate_and_delete_cascade(stores):
     assert ledger.db.execute("SELECT count(*) FROM knowledge_fts").fetchone()[0] == 0
     assert not ledger.history(SCOPE, "alice")
     ledger.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows uses the current-user directory ACL")
+def test_private_ledger_and_wal_permissions(stores):
+    path = stores[0]
+    path.chmod(0o644)
+    ledger = Ledger(path)
+    try:
+        assert path.stat().st_mode & 0o777 == 0o600
+        for suffix in ("-wal", "-shm"):
+            sibling = path.with_name(path.name + suffix)
+            if sibling.exists():
+                assert sibling.stat().st_mode & 0o777 == 0o600
+    finally:
+        ledger.close()
 
 
 @pytest.mark.parametrize(
