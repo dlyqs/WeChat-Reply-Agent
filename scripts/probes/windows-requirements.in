@@ -1,0 +1,2 @@
+# Diagnostic dependency only; not imported by the main application on macOS.
+wxauto4==41.1.7

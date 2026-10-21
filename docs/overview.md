@@ -4,6 +4,12 @@
 
 ## 当前现实
 
+当前交付采用主计划 v3：固定 Windows 电脑、单一匹配微信版本、一个测试单聊、无 OCR 文本读取、10–30 秒轮询与校准后的键鼠发送。保留 G1/G2 的真实验证，取消多版本/macOS/实时性作为本轮前置；原 Phase 4–17 是扩展待办。当前自动范围仍为 Phase 1–3。
+
+已准备独立 [Windows 只读诊断](windows-probe.md)、`scripts/probes/windows_read.py`、wxauto4 41.1.7 / Python 3.12 的 Windows 依赖锁和私有配置模板。候选微信 4.1.8.107 来自上游文档，Windows 实机尚未安装/验证，执行访问待建立。主包 CLI 仍是 Mac 研究原型，不能在 Windows 冒充已支持；探针不导入其 fcntl/Mac CLI。原创代码现采用根 LICENSE 的 PolyForm Noncommercial 1.0.0，第三方许可保留。
+
+以下 Mac 事实和既有模块作为研究历史保留，与当前平台/验收范围冲突时以主计划 v3 为准。
+
 已建立 Python 包和 Phase 1 的 AX 通道候选（在当前微信实测不暴露消息控件），用户已要求最终不使用 OCR，目前停止视觉探针并研究无 OCR 接入，提供 doctor、probe read、probe send、56 项离线测试、依赖锁和构建产物。**Phase 1 因 G1 实机证据缺失而 blocked**；没有真实微信、模型或 UI 验收结论。尚无自动回复 worker、SQLite 仓储、模型客户端或前端。
 
 用户已授权“请自动完成 phase1-3”，保存为 `auto_until` 1–3，relay off。必须依次通过 G1、G2；不跳过人工关口。Phase 2/3 等待依赖，本轮未实施。G1 的完整命令、记录方式和失败出口见 [README](../README.md) 与 [原型报告](prototype-report.md)。
