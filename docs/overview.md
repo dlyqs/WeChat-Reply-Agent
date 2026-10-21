@@ -4,9 +4,11 @@
 
 ## 当前现实
 
-已建立 Python 包和 Phase 1 的 AX 通道候选（在当前微信实测不暴露消息控件），正在验证本地 Vision OCR 只读备选，提供 doctor、probe read、probe send、56 项离线测试、依赖锁和构建产物。**Phase 1 因 G1 实机证据缺失而 blocked**；没有真实微信、模型或 UI 验收结论。尚无自动回复 worker、SQLite 仓储、模型客户端或前端。
+已建立 Python 包和 Phase 1 的 AX 通道候选（在当前微信实测不暴露消息控件），用户已要求最终不使用 OCR，目前停止视觉探针并研究无 OCR 接入，提供 doctor、probe read、probe send、56 项离线测试、依赖锁和构建产物。**Phase 1 因 G1 实机证据缺失而 blocked**；没有真实微信、模型或 UI 验收结论。尚无自动回复 worker、SQLite 仓储、模型客户端或前端。
 
 用户已授权“请自动完成 phase1-3”，保存为 `auto_until` 1–3，relay off。必须依次通过 G1、G2；不跳过人工关口。Phase 2/3 等待依赖，本轮未实施。G1 的完整命令、记录方式和失败出口见 [README](../README.md) 与 [原型报告](prototype-report.md)。
+
+用户最新偏好：最终不要 OCR。窗口操控与消息读取分开核查；不以视觉 computer use 冒充结构化接口，也不擅自改用 Windows、数据库解密或 Hook。
 
 ## 已有代码导航
 
