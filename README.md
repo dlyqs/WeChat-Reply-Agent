@@ -1,135 +1,57 @@
 # WeChat Reply Agent
 
-个人微信 AI 回复项目，当前目标为单机、固定版本、单个测试单聊的低频文本演示。优先验证 Windows UI Automation 无 OCR 读取；Mac AX 原型保留作研究记录。尚未实现模型、自动轮询、去重持久化、管理工作台；Windows 读取仅提供独立诊断探针，真实兼容性和 G1 未验证。阶段状态见 [实施计划](docs/wechat-agent-plan.md)。
+基于 wechatauto-replica 的个人微信 AI 回复应用。目标是在固定 Windows 环境中完成“测试好友发消息 → Agent 处理 → 微信回复”，并提供本地工作台、知识检索、联系人记忆和真实演示视频。
 
-默认 `dry-run`、空白名单，不启动微信、不自动打开浏览器、不修改系统权限。使用中的微信账号由用户自己登录并核实。本地别名/会话 ID 都不是原生 wxid。
+**当前处于计划与原型阶段。** v4 已确定基座和集成方案，尚未导入 Replica 或实现 Agent/最终应用，Windows 收发未验收。当前代码主要是旧 Mac 原型与独立 wxauto4 诊断；不要将它们当作新基座已接通。
 
-## Windows 固定版本演示候选
+执行顺序、阶段状态及完成条件见 [执行计划](docs/wechat-agent-plan.md)，当前代码事实见 [开发入口](docs/overview.md)。
 
-建议验证组合：Windows 10/11 x64、Python 3.12、wxauto4 41.1.7、微信 4.1.8.107。
-微信版本依据上游[免费版兼容说明](https://docs.wxauto.org/docs/install.html)，仍需验证实际登录和读取；不保证旧版能持续登录。只读探针和助手执行步骤见 [Windows 诊断](docs/windows-probe.md)。不自动安装/降级客户端，不执行注入、取钥或数据库解密。
+## 技术路线与运行范围
 
-演示边界：仅测试单聊文本、窗口可见、固定桌面环境；计划每 10–30 秒轮询，重启后重新建立基线，不补收退出期间的历史。当前没有可运行的轮询/回复 worker，也不声称已支持该版本。固定位置的点击/粘贴/回车可作为后续发送候选；发送前仍须核对会话、焦点和空白草稿。
-
-## macOS 研究原型安装
-
-需要 macOS 登录桌面会话、Python 3.12（支持范围 3.12–3.13）及 [uv](https://docs.astral.sh/uv/getting-started/installation/)。初始只使用 Python；Phase 1 无 Node/UI 依赖。
-
-```sh
-uv sync --locked --extra mac
-cp .env.example .env
-mkdir -p .local
-chmod 700 .local
-cp examples/profiles/ax-candidate.json .local/wechat-profile.json
-chmod 600 .env .local/wechat-profile.json
-uv run wechat-agent --help
-```
-
-**不要执行本页的真实探针，除非你正在本机进行 G1 测试。按用户最新分工，安装和终端命令由助手执行，用户负责微信界面、手机登录与实际效果核对。**
-
-先用文本编辑器修改私有 profile：填写准确微信版本、发行渠道、界面语言、两位测试联系人的唯一窗口标题；自行核实是单聊及当前登录账号后，将相应 `account_confirmed`、`single_chat_confirmed` 改为 `true`。别名、标题、会话 ID 必须各自唯一，不能用群聊或含糊的同名联系人。测试时保持联系人在左侧会话列表中可见。所有字段严格匹配，不剥离尾部数字或做模糊搜索。
-
-在 `.env` 中设置 `WECHAT_ALLOWLIST=["test-a","test-b"]`；`WECHAT_ACCOUNT_REF` 必须与 profile 相同。默认示例的 `Messages` 是上游英文消息列表标题，其他语言需要实机确认；找不到时返回 `ax_control_missing_or_ambiguous`，不会猜控件。不要仅凭通用名称猜改 profile 并试发。
-
-配置优先级：进程环境 > `.env` > 默认值。白名单为 JSON 数组。无须模型 Key；请勿向聊天粘贴 `.env`、原始消息或截图。完整配置编辑和数据库将在通过 G1/G2 后按 Phase 3 实现。
-
-## 用户执行 G1
-
-完整用例与记录字段见 [原型报告](docs/prototype-report.md)。以下由用户亲自在本机操作：
-
-1. 保持屏幕解锁、微信前台、仅一个主窗口，手动打开测试 A 的单聊。先执行只读诊断：
-
-   ```sh
-   uv run wechat-agent doctor --output .local/acceptance/phase-1/doctor.json
-   ```
-
-   诊断只使用预检 API，不弹出权限请求、不激活窗口、不读取聊天正文。`healthy` 仅表示基础权限/进程可用，不是 G1 通过。缺少 Accessibility 或屏幕录制权限时，由用户在系统设置中自行授权实际使用的终端/Python 并重新启动终端；程序不代操作。
-
-2. 两位测试联系人各发送 5 条，包括两条连续同文；本人也发送一条。每位联系人手动切换到对应单聊后执行：
-
-   ```sh
-   uv run wechat-agent probe read --contact test-a --limit 5 --output .local/acceptance/phase-1/read-a.json
-   uv run wechat-agent probe read --contact test-b --limit 5 --output .local/acceptance/phase-1/read-b.json
-   ```
-
-   **每条命令前均需手动打开对应单聊**。核对文本、顺序、重复同文的两个出现记录、方向。读取仅当前可见快照，不滚动、不补全历史、不承诺跨帧稳定 ID。方向来自截图采样启发式，confidence 0.7，必须人工逐条核实；对称/缺失坐标标为 unknown。系统、附件、混合内容不作为本原型的自动回复输入。
-
-3. 先保持 `.env` 的 `SEND_MODE=dry-run`，在目标聊天空白输入框点击聚焦后验证不发出：
-
-   ```sh
-   uv run wechat-agent probe send --contact test-a --text 'G1 固定测试回复 A' --confirm-send
-   ```
-
-   预期 `not_sent`，无文字写入。真实测试时，由用户把 `.env` 改为 `SEND_MODE=live`，分别打开、聚焦 A/B 单聊的空输入框，每位执行一次明确固定回复：
-
-   ```sh
-   uv run wechat-agent probe send --contact test-a --text 'G1 固定测试回复 A' --confirm-send --output .local/acceptance/phase-1/send-a.json
-   uv run wechat-agent probe send --contact test-b --text 'G1 固定测试回复 B' --confirm-send --output .local/acceptance/phase-1/send-b.json
-   ```
-
-   不要连续粘贴执行两条命令；每条命令前单独手动打开对应会话并聚焦。**程序不自动激活/点击输入框**，在终端切换回来后微信通常失去前台。可在自己的终端以延迟方式安排单条命令，随后在延迟内手动回到目标微信单聊，例如：
-
-   ```sh
-   sleep 5 && uv run wechat-agent probe send --contact test-a --text 'G1 固定测试回复 A' --confirm-send
-   ```
-
-   若来不及切回，必须返回 `wechat_not_foreground` 或 `input_not_focused`，停发即符合预期；不得取消焦点校验。读取命令也可同样延迟，以便手动切回前台。
-
-   按回车的正常结果为 **`unknown`（退出码 3）**，因为本原型不能验证对端送达；必须由两位联系人确认各自收到且对象正确。私有回执写入 `.local/probe-sends/<outbox_id>.json`，崩溃前也有预写记录。不得将退出码 3 当作可自动重试的故障；查明实际结果前不要重复发送。每条新 probe send 都是用户授权的新发送意图，当前不提供自动去重/恢复。发送回执不含正文。
-
-4. 反例：在 B 会话执行 A 的 send、聚焦其他控件、保留原有草稿、最小化或切到其他应用。预期拒绝/不按回车。若输入后焦点/会话变化，可能留下本次测试草稿；程序保留现场，不盲目清空其他会话。已经投递给系统的键盘事件无法撤回，遇到任何对象错误立即停止测试、改回 dry-run。
-
-5. 使用下方离线报告命令初始化报告；**它不做实机测试，也不会填入 passed**。在私有 report.json 中由用户逐项补实际结果、状态、证据路径，并注明联系方式已脱敏：
-
-   ```sh
-   uv run python scripts/acceptance/phase1_report.py
-   ```
-
-   汇总给助手时仅提供系统/架构/版本/渠道/语言、用例编号、通过/失败、脱敏错误码和失败现象。原始聊天和联系人绑定留本机。测试结束改回 `SEND_MODE=dry-run`、`WECHAT_ALLOWLIST=[]`。
-
-## 故障与安全边界
-
-| 错误/现象 | 处理 |
+| 部分 | 方案 |
 | --- | --- |
-| `mac_extra_not_installed` | `uv sync --locked --extra mac`；离线环境不需要 mac extra |
-| `permissions_or_app` | 用户核实权限、微信是否运行及解锁桌面；程序不自动修复 |
-| `profile_missing_or_invalid` / `account_binding_unconfirmed` | 在本机核实私有 profile 和 account_ref，不用真实 wxid 冒充本地 ID |
-| `contact_not_allowlisted` / `contact_binding_unconfirmed` | 用户核对测试别名和单聊绑定 |
-| `ax_control_missing_or_ambiguous` | 保留脱敏环境和错误；版本可能不暴露 AX，停止，不猜坐标发消息 |
-| `current_chat_mismatch` / `wechat_not_foreground` | 手动切到正确聊天；禁止绕过复核 |
-| `existing_draft_preserved` / `input_not_focused` | 用户确认草稿并选择空输入框，程序不覆盖已有内容 |
-| `screenshot_scale_mismatch` | Retina 坐标未验证，停读；回报环境，禁止靠猜缩放修正方向 |
-| `another_probe_running` | 同数据目录仅允许一个探针；不通过换目录并发操作微信 |
-| `unknown` / 退出码 3 | 人工确认对端是否收到，不自动重发 |
+| 微信基座 | [wechatauto-replica 1.2.7.0](https://github.com/fanyuantaier/wechatauto-replica/tree/d322c4a9b1124228820bab363e5676016f188fc6)，固定源码快照，计划作为 third_party 本地依赖内置 |
+| 消息读取 | 基座的本地数据库解密/WAL 读取，按其实现读取微信进程中的密钥材料并缓存 |
+| 回复发送 | 基座 UIA 优先、坐标/OCR fallback、剪贴板粘贴与回车；允许其 UIA 热激活运行时标志写入 |
+| Agent | LangGraph、可配置模型/人设、多轮上下文、知识检索与按联系人隔离的记忆 |
+| 应用 | Python 3.12、FastAPI、SQLite、React/TypeScript/Vite；API/UI 不直接调用第三方 GUI 方法 |
+| 环境 | 一台 Windows 10/11 x64 电脑、一个账号和测试好友单聊；固定微信版本、保持桌面解锁与窗口可见 |
+| 节奏 | 默认 15 秒轮询，可配置；不要求实时、多系统、多版本或全天候运行 |
 
-本候选依赖 AX 和屏幕录制，只处理前台可见单聊；不会自动导航好友、获取附件或历史。只通过显示标题绑定身份，用户必须人工排除同名联系人、账号切换和隐藏同名会话；看到一个相同标题不能证明全局身份唯一。任何账号/联系人变更后重新核实绑定。发送前的复核不能消除最后瞬间的 GUI 竞态，因此 G1 必须由测试联系人收件确认，当前不得启动无人值守 worker。
+微信 4.1.15.53 为上游记录的测试组合，可优先验证；本项目尚未确认兼容，不要求为适配擅自覆盖当前客户端或聊天数据。OCR 已允许使用，不再强制关闭。详细初始化步骤和 G1 用例见 [Windows 接入](docs/windows-probe.md)。
 
-截图仅在读取时驻留内存，消息原文仅写入用户指定的本地 JSON。私有报告新目录权限 0700、文件 0600，原子写入；已有目录由用户自行核对权限。运维日志不包含原文/昵称/密钥。Phase 1 没有保留期自动清理，测试后用户自行删除不需要的本地证据，保留必要的失败记录。
+## 集成与当前可用内容
 
-## 离线开发验证
+计划中的链路为：ReplicaAdapter → 身份/白名单过滤 → SQLite inbox → 会话队列 → Agent → outbox → 基座发送 → 回读/人工核对。应用单独管理游标、状态和失败，不把模型与发送直接放进可自动重试的监听回调。
 
-不需要微信、GUI 权限或模型 Key：
+现有代码可运行离线检查：
 
-```sh
+~~~sh
 uv sync --locked
 uv run pytest tests/adapter -q
 uv run ruff check src tests scripts
 uv run ruff format --check src tests scripts
 uv build
-```
+~~~
 
-测试使用合成 AX 桥和 FakeAdapter，不调用真实原生探针；FakeAdapter 不能从 CLI 冒充微信。`doctor/probe` 是本阶段可用命令，其余计划命令尚未实现。锁文件含 mac 可选依赖；真实版本支持矩阵仍为 `not_tested`。
+这些检查不访问微信，也不证明 Windows 接入成功。当前没有可运行的 Replica/connect/prototype/serve；Phase 1–4 实现后再补实际安装和统一启动命令。最终目标入口为 uv run wechat-agent serve，不自动打开浏览器。
 
-来源与许可：[复用登记](docs/reuse-register.md)、[第三方声明](THIRD_PARTY_NOTICES.md)。当前不远程发送内容、不需要任何模型 Key。
+旧 scripts/probes/windows_read.py 使用 wxauto4，旧 Mac doctor/probe 使用 AX；均保留作研究参考，不作为当前 Windows 路线的安装或验收入口。
 
-## 许可证与使用范围
+## 使用与数据边界
 
-本项目原创代码采用 [PolyForm Noncommercial License 1.0.0](LICENSE)，属于公开源码、非商业许可项目。允许的用途以许可证正文为准；未授予商业部署、付费产品集成、收费服务或其他商业用途许可。免费提供的商业服务也不自动成为非商业用途。
+默认 dry-run、空白名单和停止状态。只在明确绑定的测试账号/好友上开启 live；有既存草稿、焦点/会话无法确认或发送结果 unknown 时暂停，不自动重发。基座回读仅证明本地出现发出记录，对端收件仍需核对。
 
-查看、评估代码不授予商业使用权。确需商业使用须另行取得相关权利人的书面许可。第三方代码与依赖保留各自许可证，详见 [第三方声明](THIRD_PARTY_NOTICES.md)；本项目不能收回第三方原有许可权利。
+安装、依赖与终端操作由助手完成；用户负责微信客户端、手机登录、测试消息、收件确认、界面验收和录像。前端不自行打开页面做视觉检查。
 
-本项目面向本人授权账号与测试对象的个人研究和辅助工作流，不提供诈骗、骚扰、垃圾营销或未经授权获取信息的支持。公开源码不代表获得微信官方授权，也不保证账号不受限制。用途说明不修改 LICENSE 中的标准条款。
+模型 Key、微信密钥、明文快照、消息/截图/校准记录仅留私有 DATA_DIR，不进入 Git、日志或公开交付。远程模型仅接收配置场景需要的输入。低频和旧版本不构成免于账号限制的保证。
 
-## 当前微信版本的接入补记
+本期不提供群聊、多账号并发、朋友圈、批量营销、全量历史导入或长期无人值守承诺。可选业务工具、文件/语音入口按计划选择后实现，未实现时不显示入口。
 
-实测微信 4.1.5（31960）在当前环境中没有暴露 AX 会话/消息/输入框，上述 AX probe 会安全拒绝；暂不列为受支持版本。已增加本机 Vision 只读可行性诊断，Apple OCR 依赖包含在 `uv sync --locked --extra mac` 内。按当前分工由助手执行 `scripts/probes/vision_read.py`，用户只需保持目标会话前台。该诊断不上传截图、不发送消息、不判断消息方向，尚不能替代 G1；详见原型报告。
+## 许可证
+
+原创应用代码采用 [PolyForm Noncommercial License 1.0.0](LICENSE)，属于公开源码、非商业许可项目。未授予商业部署、付费产品集成、收费服务或其他商业用途许可；免费提供的商业服务也不自动成为非商业用途。商业使用须另行取得相关权利人的书面许可，具体以许可证正文为准。
+
+拟内置的 wechatauto-replica 保留 Apache-2.0，已有第三方改编代码与依赖保留原许可证；本项目不能收回第三方原有许可权利。来源、采用状态和补丁见 [复用登记](docs/reuse-register.md) 与 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+本项目面向本人授权账号与测试对象的个人研究和辅助工作流，不提供诈骗、骚扰、垃圾营销或未经授权获取信息的支持。用途说明不修改标准 LICENSE 条款，公开源码不代表微信官方授权。

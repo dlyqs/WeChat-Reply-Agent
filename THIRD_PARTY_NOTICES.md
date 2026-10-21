@@ -6,6 +6,13 @@ third-party material identified below or of separately installed dependencies.
 No wxauto/wxauto4 source code or binary is bundled with this project; the Windows
 probe uses documented APIs through a separately installed dependency.
 
+The v4 execution plan selects wechatauto-replica 1.2.7.0 at commit
+d322c4a9b1124228820bab363e5676016f188fc6 for future vendoring under
+third_party/wechatauto_replica/. Its source has not been imported yet.
+When imported, retain its Apache-2.0 license, applicable attribution/NOTICE
+and modification records; the project's noncommercial license does not
+replace the upstream license. See docs/reuse-register.md.
+
 ## WeChat-MCP
 
 Adapted AX traversal, control identifiers, message-list lookup, input writing and

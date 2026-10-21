@@ -1,37 +1,46 @@
-# Windows UI Automation 读取诊断
+# Replica Windows 接入与 G1
 
-目标是先确认固定桌面环境下能够直接取得测试单聊文本。当前不是自动回复 worker，不能以离线测试代替真实兼容验收。
+更新：2026-10-21。当前采用 [主计划 v4](wechat-agent-plan.md) 的 wechatauto-replica 基座；本文规定接入顺序，不另维护阶段状态。旧 wxauto4 和 Mac 探针保留为历史，不再作为当前安装步骤。
 
-## 候选环境
+## 固定基座与当前事实
 
-Windows 10/11 x64、Python 3.12、wxauto4 41.1.7。微信候选为 4.1.8.107，依据[上游免费版文档](https://docs.wxauto.org/docs/install.html)，需先验证本人账号能正常登录。已核对 PyPI 存在对应 cp312/win_amd64 wheel；当前未在 Windows 安装或运行。
-
-当前 `cluic/wxauto4` GitHub 树只有“停止更新”README，不能通过克隆取得与 PyPI 分发包等价的源码。旧 `cluic/wxauto` 公开实现针对 3.9.11.17，不能替代当前 4.x 分发包。采用单独安装的依赖调用其公开 API，不将其二进制或源码纳入本项目交付；后续分发仍须核对该包随附条款。
+- 源码：fanyuantaier/wechatauto-replica，1.2.7.0，固定 SHA d322c4a9b1124228820bab363e5676016f188fc6。
+- 环境：Windows 10/11 x64、Python 3.12、登录用户交互桌面。微信 4.1.15.53 是上游测试记录，必须在本机验证。
+- 读取：允许基座按选定账号取钥、缓存和读取数据库/WAL；不把完整历史导入本应用。
+- 发送：允许 UIA 热激活（进程中 Qt accessibility 标志写入）、坐标/OCR、窗口激活和剪贴板；OCR 默认按混合路线开启。
+- 当前尚无 third_party 内置基座、ReplicaAdapter 或 Windows G1 证据；本页的新命令由 Phase 1 实现后才可执行。
 
 ## 执行顺序
 
-安装与终端操作由助手在具备执行访问的 Windows 环境中完成。当前 Mac 终端不能直接操作另一台尚未连接的 Windows 电脑。取得 Windows 执行访问后，在仓库根目录使用 PowerShell：
+安装与终端由助手在 Windows 工作区执行。先核查该工作区已有提交/证据，保留当地未提交成果；此 Mac 工作区没有的实机结果不能被假定不存在或自动覆盖。
 
-```powershell
-py -3.12 -m venv .local/windows-probe/venv
-& ./.local/windows-probe/venv/Scripts/python.exe -m pip install --require-hashes -r scripts/probes/windows-requirements.txt
-Copy-Item examples/profiles/windows-read-candidate.json .local/windows-read-profile.json
-```
+1. 核查 Windows/CPU/Python、微信准确版本/签名/登录状态、桌面、屏幕缩放和数据位置。doctor 只读，不构造 WeChatDB/WeChatGUI，不读取密钥或修改进程。
+2. 按主计划内化源码到 third_party/wechatauto_replica/，建立本地 path source、Windows extra、uv.lock、UPSTREAM.md 和必要许可。先验证导入链/资源齐备，避免启动后才缺模块。
+3. 在私有 profile 绑定账号、本机数据根目录、测试好友原生 username 与显示名、本地别名 test-a。真实名称和 ID 不写入示例、公开报告或提交。
+4. 显式 connect 初始化基座。输出取钥/缓存、快照、新鲜度、校准/UIA 各步骤的脱敏结果；密钥、备份、明文库和校准资料留受控 DATA_DIR，核查 Windows 当前用户 ACL。
+5. 先通过 Replica 只读获取已绑定单聊的最近文本，核对发送者/方向，不调用基座全会话监听或媒体接口。
+6. dry-run 验证无写入/按键；准备空白草稿与明确测试会话后执行一次带 --confirm-send 的固定回复，由对端确认。
+7. 记录 plan_version=v4、foundation=replica、实际版本/路径摘要、案例状态与私有证据位置；G1 确认后再执行 Agent G2。
 
-助手填写私有 profile 的准确 `expected_chat_title`；使用者核实当前登录账号与唯一测试单聊后，才将两个 confirmed 字段置 true。示例没有真实联系人。用户负责打开客户端、手机登录、选定测试聊天、发送测试消息及核对结果。
+开发目标入口为 doctor、connect、probe read/send。当前旧 CLI 尚未适配 Windows；不能将目标命令的文档存在视为实现完成。后续 Windows 安装使用主项目锁与本地基座，不额外安装旧 scripts/probes/windows-requirements.txt。
 
-```powershell
-& ./.local/windows-probe/venv/Scripts/python.exe scripts/probes/windows_read.py --profile .local/windows-read-profile.json --output .local/windows-probe/read.json
-```
+## G1 用例与失败出口
 
-探针只调用 `ChatInfo()` 和 `GetAllMessage()`，读取前后严格核对相同标题和 `friend` 类型，不搜索、滚动、切换会话或发送。第三方库的构造函数可能激活微信。窗口标题依赖人工绑定，不代表原生唯一身份。只返回最近已加载消息中的文本，正文仅写入忽略目录的报告；终端只输出数量/稳定错误码。Windows 文件权限继承用户目录 ACL，应在该电脑核实，Git 忽略规则不等于访问控制。
+| 用例 | 操作 | 通过依据 |
+| --- | --- | --- |
+| P01-01/02 | 环境检查、初始化与显式账号绑定 | doctor 无初始化副作用；connect 结果真实，账号/数据根目录吻合 |
+| P01-03 | 一个好友单聊准备 5 条文本，含连续同文和本人消息 | 内容、顺序、出现次数、方向逐条正确，未知身份/方向不自动回复 |
+| P01-04 | dry-run → 一次固定回复；错会话/群聊/草稿/焦点反例 | dry-run 不操作；对端确认真实回复；反例拒绝；可能已发时 unknown 不重发 |
+| P01-05 | 合成同 sort_seq、跨分片、旧同文回读和坏库/旧快照错误 | 应用去重/发送确认正确，异常暴露为降级；未覆盖的 WAL 边界披露 |
 
-退出码 0 表示取得非空文本快照；2 表示空快照或拒绝。两者都不会将 G1 自动标为通过。发生错误时不输出原始异常，避免带出昵称或正文；没有 UIA 文本时停在诊断阶段，不启用 OCR。
+UIA 不可用时可按基座混合路线使用 OCR，不能借此跳过账号/会话复核。基座初始化或 OCR 成功不能单独证明消息身份正确。窗口尺寸/缩放变化后重新校准，目标不确定停发。
 
-## G1 演示验收
+若密钥、库、WAL 或 UI 路径失败，保留稳定错误与私有报告，标记 degraded/blocked；不靠增加全量导出、关闭系统保护或自动更换账号排障。若曾进入发送动作，结果无法确认则保持现场，先由对端核对，再标已发或作废。
 
-在一个已核实的测试好友单聊中准备 5 条文本，含两条连续同文和一条本人消息。核对每条内容、顺序、出现次数和方向，再核对切换聊天/群聊时拒绝输出。通过后才实现显式固定回复与模型闭环。探针没有发送函数。
+## Agent 交接
 
-消息 `id` 是 UI ID，[上游明确说明切换 UI 后会改变](https://docs.wxauto.org/docs/class/Message.html)，不能冒充微信服务端 ID 或持久增量游标。演示期间固定会话，重启/切换后重新建立基线，不自动回复既有历史；后续消费逻辑另行实现。
+G1 后复用同一适配器、规范化事件和私有存储。应用按间隔轮询并事务写 inbox/游标，模型消费 inbox，发送经 outbox。不要直接在基座 Listener 的重试回调中调用模型和 SendMsg。已发现的并列 sort_seq、发送者编号、旧记录回读与重试边界按主计划第 4 节验证/修复。
 
-固定窗口位置可降低发送校准成本。优先以 UIA 获取输入框位置和会话信息，再点击、粘贴、回车；坐标 fallback 必须与校准窗口、缩放和会话绑定。发送后核对本地出现的本人消息及对端收件，结果不明时暂停，不自动重发。
+## 旧探针说明
+
+scripts/probes/windows_read.py、windows-requirements.* 和 examples/profiles/windows-read-candidate.json 属于旧 wxauto4 41.1.7 路线，未经过 Windows 实测；其合成守卫测试可参考。它们不调用 Replica，不能用于本次 G1，也不应继续安装其锁文件。

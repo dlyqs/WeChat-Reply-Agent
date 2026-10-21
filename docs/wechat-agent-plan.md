@@ -1,694 +1,365 @@
-# 个人微信 AI 回复 Agent 实施计划
+# 个人微信 AI 回复 Agent 执行计划
 
-创建日期：2026-10-21（Asia/Shanghai）  
-计划版本：v3；当前采用下方固定环境演示配置，原 18 阶段规格保留作扩展参考。
-交付工作区：`/Users/git_local/WeChat-Reply-Agent`  
-流程依据：[dev-goal-workflow-meta-skill](/Users/git_local/dev-workflow-skill/SKILL.md)
+更新日期：2026-10-21（Asia/Shanghai）。计划版本：v4。
+本文件是阶段状态、实施顺序和完成条件的唯一来源；代码导航见 [overview.md](overview.md)。
 
-```text
+~~~text
 execution mode: auto_until
 automatic start phase: 1
 automatic stop phase: 3
+execution state: paused
 conversation relay: off
-plan review: accepted for Phase 1–3 by user instruction
-execution authorization: 用户 2026-10-21「请自动完成 phase1-3」；保留 G1/G2 人工关口
-```
+current change: plan revision only
+wechat foundation: wechatauto-replica 1.2.7.0
+upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
+~~~
 
-本文件是后续“继续”“执行 Phase X”的唯一阶段状态来源；代码导航见 [overview.md](overview.md)。现已授权自动执行 Phase 1–3，按下方主表推进；G1/G2 人工验收不可跳过，没有真实微信验收结论。
+v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义与自动授权范围；后续阶段合并为 Phase 4–7，旧 Phase 4–18 编号不再用于执行。本次只修改计划和入口文档，不启动实现、安装、真实读库或进程修改；后续明确继续时，在 Windows 工作区按保存范围推进，依次通过 G1/G2。
 
-## 当前交付配置（v3，2026-10-21）
+## 1. 交付目标与范围
 
-本节覆盖下文旧规格中与其冲突的目标、平台、性能与验收要求；已完成的研究记录保留为历史事实。目标为可真实操作并录制的最小回复闭环，限制条件在 README 与视频中明确列出。
+交付一个在固定 Windows 桌面环境运行的个人微信回复应用：指定测试好友发来文本，应用按间隔读取、过滤、归入会话，调用 Agent 后通过当前微信账号回复。应用提供统一启动入口、本地工作台、可配置模型、上下文、知识与记忆、运行记录，以及真实演示视频和可复现源码包。
 
-- 运行于一台固定 Windows 10/11 x64 电脑，只验收一种实际可登录且与适配器匹配的微信版本，不再要求 macOS 或两个版本兼容。
-- 优先采用 UI Automation 直接读取文本；Windows 候选为 wxauto4 41.1.7 / Python 3.12 / 微信 4.1.8.107。该组合尚未实测，不因上游文档而标为支持。客户端安装前先核查来源与签名，旧版本无法正常登录时重新选型，不绕过登录限制。
-- 允许窗口固定位置、尺寸和缩放；只支持一个已核实的测试好友单聊和文本。轮询先采用可配置的 10–30 秒间隔，不再以 ≤2 秒轮询/P95 ≤20 秒、后台运行、多会话或长时稳定作为当前硬验收。
-- 发送允许在已校准环境中通过 UIA 定位、鼠标点击、剪贴板粘贴和回车完成。保留目标/焦点/草稿校验、显式 live、发送结果不明时停止；默认仍 dry-run，不把按键成功当成收件证明。
-- 首次运行与重启重新建立可见消息基线；不回补观察前/退出期间历史，不承诺跨 UI 重建的无损监听。连续同文不能仅按正文 hash 合并。
-- G1：一个测试好友单聊的 5 条文本（含连续同文与本人消息）读取正确，1 条显式固定回复由对端确认，错会话/群聊拒绝。G2：同一会话多轮模型回复、本人消息不触发、自循环过滤、重启基线不回复旧历史。真实证据仍由用户核对。
-- 当前自动实施范围保持 Phase 1–3；Phase 4–17 是后续扩展待办，不是本次演示交付的必需前置。Phase 3 后可整理演示录像与最小交付包，无需先完成原 Phase 17。未实现的知识/业务/记忆/UI 能力不在视频中冒充已实现。
-- 当前无需真实聊天数据库、取钥或注入；这些路线继续只作研究。安装和终端命令由助手执行，微信登录、测试消息和收件核对由用户完成；Windows 主机的执行访问仍待建立。
-- 原创代码采用 PolyForm Noncommercial 1.0.0；第三方代码保留其原许可。公开文档与提交只记录技术范围、实施和验证结果。
+微信控制采用 [fanyuantaier/wechatauto-replica](https://github.com/fanyuantaier/wechatauto-replica/tree/d322c4a9b1124228820bab363e5676016f188fc6)，复用其数据库读取、密钥缓存、UIA、坐标/OCR、剪贴板输入和发送回读。OCR 允许使用并默认遵循基座的混合路线，不再维护独立的无 OCR 门槛，也不另写一套微信底层。
 
-当前增量：已新增独立 Windows 只读探针 `scripts/probes/windows_read.py`、依赖锁与私有绑定模板；尚未安装或运行 Windows 原生依赖，没有 Windows 真实读取或发送结果，Phase 1 仍 blocked。细节见 [Windows 诊断](windows-probe.md)。
+### 1.1 最终交付必需项
 
-当前离线验证：62 项 adapter/probe 测试通过，ruff check/format、主锁校验及 wheel/sdist 构建通过；Windows 依赖已按 Python 3.12 / x64 解析并固定版本与哈希。上述结果不包含 Windows 实机读取或发送。
+- 一台 Windows 10/11 x64 电脑、一种实际验证过的微信版本、一个明确绑定的账号和测试好友单聊；只承诺文字收发。
+- 可配置的低频轮询，默认 15 秒，演示允许 10–30 秒；按本机实际耗时展示，不承诺实时、所有版本、全天候或后台无桌面运行。
+- 白名单、本人/系统/未知方向过滤、连续消息合并、消息级去重、会话串行、持久化 inbox/outbox 与 unknown 停发。
+- LangGraph 最小 Agent、多轮上下文、可配置模型与人设、超时/长度/调用预算；小规模本地知识检索和按联系人隔离的长期记忆。
+- 简约本地工作台：状态与启停、会话/执行记录、配置与诊断，Phase 5 再接入知识/记忆管理。
+- 原创代码的非商业许可、第三方来源与补丁记录、安装/启动/限制说明、真实录像和无私密数据的源码包。
 
-## 1. 目标与范围
+### 1.2 可选增强与明确不做
 
-当前目标是在固定 Windows 环境中运行个人微信文本回复演示：一个测试好友向当前个人号发送文本，应用按间隔读取、识别方向和上下文、调用模型并回复。提供可复现的启动方式、真实验收记录与演示视频。下文知识、业务工具、完整记忆和工作台是原扩展路线，按 v3 不作为本轮必交项。
+Phase 6 的虚构业务工具、文件分析和语音转写入口为可选增强，初始未选择；未实现时不显示功能入口，也不作为最终交付缺口。需要采用时在主表明确选择，不以空实现通过验收。
 
-语义已按前文归一：本题的核心是“替个人号回复好友”，不是“本人给微信 ClawBot 发消息”。单聊是必须交付范围；群聊不进入本期验收。语音、文件按原题交付应用设计和可测试处理边界，不预先承诺所有微信版本都能自动获取原始附件。
+不要求 macOS、多版本矩阵、群聊、多账号并发、全量历史导入、原始音视频获取、朋友圈、批量营销、云托管、原生安装器或长期稳定性认证。上游已有这些接口不代表应用要全部暴露。首次启动建立基线，默认不回复启动前历史；停机期间不承诺无损补收。
 
-范围内：
+## 2. 基座版本、运行前提与权限边界
 
-- 白名单、垃圾/空消息/系统消息过滤、排除本人消息、去重、连续消息合并、按会话串行处理。
-- LLM 多轮聊天、人格化但简洁的回复、知识问答和两个受限示例业务工具。
-- 短期上下文、跨重启的长期偏好/事实、记忆隔离、更新和删除。
-- 本地 Web 工作台、状态和日志可见、暂停与恢复、配置解耦。
-- 明确的支持版本矩阵、故障处理、README、录像脚本、视频和代码交付。
-
-本期不做：批量营销/加好友/朋友圈、支付等真实业务写入、群机器人、多账号并发、云托管、App Store 分发、读取既有全部聊天数据库或进程内存、Hook/协议逆向、为适配擅自降级微信或修改系统保护。ClawBot 只能作为将来另一种渠道，不得替换本题的好友回复验收。
-
-## 2. 可行性、约束与待采集信息
-
-### 2.1 可行性判断
-
-Agent、知识检索、持久化和本地 UI 可采用成熟组件，工程可行性较高。最大不确定性是 Mac 微信的消息读取与发送：Accessibility 树、语言、窗口状态和发行渠道会变化；OCR 也可能误判方向或会话。先验证微信通道，再投入完整产品实现。
-
-目标是“在明确测试过的多版本组合上稳定运行”，不能声称兼容所有微信版本。若用户无法提供第二个版本环境，兼容性要求保持未验收；架构可扩展、离线回归通过均不能替代实机证据。若通道原型在目标环境不可用，应停在原型阶段讨论范围或渠道调整，而不是把演示包装成完成。
-
-### 2.2 必须遵守的协作边界
-
-1. 助手不得自行拉起页面、启动浏览器做视觉检查，也不得使用 Playwright、浏览器自动验收 skill 或 CUA 绕过限制；前端仅做类型检查、构建、必要的组件逻辑验证和静态检查。
-2. 2026-10-21 用户更新分工：安装和终端命令由助手执行，包括已授权范围的诊断/探针；用户负责打开微信、手机登录、界面操作、实际收发效果核对、多版本验证与录屏。真实发送仍须明确测试会话和发送授权，G1/G2 证据不可跳过。
-3. 不使用 GitNexus；不创建额外会话、自动 relay 或子 agent。需要这些能力时另按用户明确指令处理。
-4. 人工操作项要有命令/步骤、预期、结果记录和失败出口；缺少凭据、权限或环境时标记未验证，不反复尝试绕过。
-5. 所有密钥、服务地址、模型、Token 预算与运行限制从后端 `.env`/环境变量加载；前端不得出现密钥、返回已有密钥或使用 `VITE_*` 承载敏感配置。
-6. 默认 `dry-run`；默认白名单为空且停发。真实收发必须由用户在本机明确启动并配置测试白名单。
-7. 工作台不冒充已经运行：离线样例、dry-run 和真实连接状态必须清楚可辨。
-
-**2026-10-21 用户新增技术偏好**：最终实现不要使用 OCR，原因是效率和准确性。已停止待执行的视觉探针；已有 OCR 代码仅保留为诊断研究记录，不作为最终通道。当前转为核查无 OCR 的文本读取和窗口控制。Computer use 的截图推理不能被当作已解决结构化消息获取；切换 Windows worker 或采用本地数据库/进程访问属于原边界变更，仅比较和说明，不自行实施。G1/G2 及自动授权 1–3 保持。
-
-### 2.3 Phase 1 采集，不阻塞本次计划的信息
-
-用户提供或自行生成并审阅：macOS 版本、CPU 架构、微信准确版本/官网或 App Store/界面语言、是否有两位测试联系人、可用的第二版本环境。不要自动安装/切换微信版本。
-
-LLM 默认采用可配置的兼容接口，模型和服务商由用户在本地填写；不需要向聊天粘贴 Key。知识和业务样例使用虚构数据，交付时明确其示例性质。时间预算尚未给定，阶段顺序按依赖确定，不承诺未知环境下的工期。
-
-## 3. 技术路线与复用清单
-
-正式实现默认选择：Python 3.12、FastAPI、LangGraph、SQLite（含 FTS5）、React + TypeScript + Vite + Tailwind CSS + shadcn/ui。以兼容依赖的锁文件为最终安装依据；Phase 1/3 验证支持架构。后端和微信 worker 运行于登录的 Mac 用户会话，前端为本地工作台；不把 GUI worker 放进 Docker、无桌面守护进程或云服务器。
-
-应用链路：微信适配器 → 规范化事件 → 确定性过滤/去重 → 会话队列 → Agent → 知识/工具/记忆 → 发件箱 → 同一会话复核 → 发送 → 结果确认。
-
-| 部分 | 复用来源与具体位置 | 采用方式 | 必须自己补齐或核实 |
-| --- | --- | --- | --- |
-| Mac 视觉接入候选 A | [wechat-mac-rpa](https://github.com/wq19901103wq/wechat-mac-rpa)：`src/capture/`、`src/ocr/`、`src/layout/`、`src/action/` | 优先提取最小截图/OCR/发送能力；不整体搬入其 Agent、后台和历史数据功能 | 识别方向、会话匹配、窗口限制、延迟、发送确认、真实版本验收 |
-| Mac AX 接入候选 B | [WeChat-MCP](https://github.com/BiboyQG/WeChat-MCP)：`src/wechat_mcp/wechat_accessibility.py`、`fetch_messages_by_chat_utils.py`、`reply_to_messages_by_chat_utils.py` | 在用户目标环境确实暴露 AX 控件时，复用其薄封装；可直接适配 Python 接口，不为使用 MCP 而引入额外服务 | 主动轮询、会话识别、幂等、后台生命周期；核对 [#8](https://github.com/BiboyQG/WeChat-MCP/issues/8)、[#17](https://github.com/BiboyQG/WeChat-MCP/issues/17) |
-| Agent 状态机 | [LangGraph](https://github.com/langchain-ai/langgraph)、[Memory 文档](https://docs.langchain.com/oss/python/langgraph/add-memory) | 依赖库；使用 graph、工具节点和 SQLite checkpointer，避免自写 Agent 循环 | 本题路由、终止条件、会话隔离、超时和预算 |
-| 配置与接口校验 | Pydantic Settings、Pydantic、FastAPI、HTTPX | 依赖库 | `.env` 加载优先级、校验、脱敏、受限工具契约 |
-| 知识处理 | `langchain-text-splitters`、`jieba`、SQLite FTS5；文件解析库 | 复用分块与中文分词后建立小规模全文索引，检索返回来源 | 验证中文短语/订单术语召回、无命中、更新、隔离和引用；本期不强制新增向量服务 |
-| 长期记忆 | SQLite + LangGraph store/持久化接口设计 | 复用存储机制，事实提取和更新策略保持小而可解释 | 按联系人隔离、冲突更新、TTL、删除、跨重启验证；checkpoint 不等于长期记忆 |
-| UI | shadcn/ui、Radix、Lucide、Tailwind CSS | 复用表单、对话框、表格、图标；以统一 token 组合 | 页面信息结构、交互状态、无障碍、用户人工视觉验收 |
-| 附件扩展 | `pypdf`、`python-docx` 等解析库；可替换 ASR 接口 | 使用合成样例验证内容处理；避免自写解析器 | 微信附件获取能力必须另验证；本期语音最低交付为完整设计与转写事件入口 |
-| 稳定性与验证 | pytest、HTTPX 测试客户端、ruff、tsc、Vite | 离线回放、模拟接口、静态验证 | 人工实机结果和版本矩阵，不能由 mock 代替 |
-| 其他成品参考 | [CowAgent](https://github.com/zhayujie/CowAgent) 的 channel/工具/记忆边界 | 架构参考，不默认导入整个运行框架 | 其当前 ClawBot 渠道不满足代回好友；避免第二套 Agent 基座 |
-
-复用纪律：Phase 1 创建 `docs/reuse-register.md`，记录来源 URL、确切 commit SHA/包版本、许可证、采用的文件/符号、改动和验证范围。对复制/改编代码保留声明并写入 `THIRD_PARTY_NOTICES.md`，依赖按许可证要求处理。不得把上游历史或作者功能当成自己的贡献。
-
-调研已查得两个文件的来源定位点：RPA `message_sender.py` 最近文件变更为 `0c129a5bb255a6640694c73fcdf178e7c3dda49b`；MCP `wechat_accessibility.py` 为 `5ffd0b4d80655bc5e284b3cea06a0a7b0278fa57`。它们仅用于追溯，不代表整仓最佳版本或已验证适配；真正采用前仍要审阅选定快照、所有相关文件和许可证。RPA 近期 Star 图表自动提交不能作为功能维护证据。
-
-候选选择遵循证据：A 为首选验证对象，B 为备选；如果 B 在当前环境明显更准确且更快，可以选择 B。每个版本配置只启用一个明确适配器，识别不确定时停发，不让两个识别器各自发送。仅在验证需要时增加局部 fallback，避免同时维护两套完整接入。
-
-## 4. 本轮冻结的交付规格
-
-### 4.1 开发和完成口径
-
-- 原型直接建立在最终 `src/wechat_reply_agent/` 包内，复用正式配置、事件、适配器与存储接口，不另建一套必然丢弃的系统。G1/G2 通过前仍不铺完整产品。
-- 技术栈、运行形态、页面、业务示例和接口在本轮确定。后续直接实现与验收；`architecture.md`、`ui-design.md` 是同步实现的说明，不是需要再次审批的大模块计划。
-- 原型事实只决定视觉/AX 适配器和版本 profile；模型由 `.env` 选择。这些在 Phase 2 落定，不改变后续模块边界。
-- 本地导入 TXT、Markdown、文本型 PDF、DOCX 并处理其正文为必做；扫描/加密 PDF 返回明确不支持结果，不留“预算内再考虑”的必做功能。
-- 原题仅要求语音/文件的应用思路。语音必做完整设计、类型契约、转写文本入口和失败测试；原生微信音频获取、真实 ASR 服务、视频理解不在本期必须范围。能力标签如实展示，这是范围定义，不是中途待规划模块。
-- 群聊、多账号、全量历史、云托管、向量数据库、原生安装器不在本期；最终是 Mac 本地源码启动交付，不把这些作为最后欠缺的开发。
-- 每阶段交付可验证增量：代码、必要测试、README 增量、复用登记和真实提交。内部模块用自动测试验收；明列的真实微信、模型效果和 UI 视觉由用户当阶段验收，不能全部后移。
-- 下文 CLI/API/文件为冻结的实施目标，当前尚未创建；该阶段完成后必须真实存在。命令中 `<...>` 由用户在本机替换。
-
-### 4.2 运行、配置和状态契约
-
-最终唯一应用入口为 `uv run wechat-agent serve`，同源提供本地工作台与 API，worker 初始停止、模式默认 `dry-run`。Python 使用 `uv.lock`，前端使用 `ui/package-lock.json` 和兼容的 Node.js 22。按 2026-10-21 更新分工，终端命令由助手执行；用户负责微信界面、手机登录和真实效果核对。
-
-| CLI 契约 | 固定行为 |
+| 项目 | 固定选择与验证要求 |
 | --- | --- |
-| `doctor --output <json>` | 只读诊断环境/权限/依赖，不发送、不修改系统设置 |
-| `probe read --contact <alias> --limit 5 --output <json>` | 读取指定测试会话和方向，原文留本机，公开报告仅摘要 |
-| `probe send --contact <alias> --text <text> --confirm-send` | 显式发送参数、非空白名单、复核会话；不确定则停发 |
-| `prototype --mode <mode> --duration <seconds>` | mode 为 dry-run 或 live；Phase 2 最小循环，live 必须显式选择和本地配置 |
-| `serve --host 127.0.0.1 --port <port>` | 唯一实例锁、同源静态 UI/API，不自动开浏览器 |
-| `replay --suite <name> --output <json>` | 合成数据/假适配器，不需要微信或 Key，结果标 `offline` |
-| `verify --output <json>`、`package --video <path>` | 就绪检查/打包，不启动微信或页面、不上传/推送 |
+| 基座 | wechatauto-replica 1.2.7.0；源码固定 d322c4a9b1124228820bab363e5676016f188fc6，不自动跟随 main |
+| Python / 桌面 | Python 3.12 x64；登录用户的 Windows 交互桌面，保持解锁，微信窗口可见 |
+| 微信 | 优先验证当前可正常登录的 4.1.15.53 或同基座可适配版本；这是上游记录，不是本项目兼容结论 |
+| 读取 | 选定账号的本地加密数据库与 WAL；按基座流程读取进程中的密钥材料并缓存，实际新鲜度需核对 |
+| 发送 | 基座 UIA 优先、坐标/OCR fallback；允许窗口激活、搜索/切换到已绑定目标、点击、粘贴、回车 |
+| UIA 热激活 | 接受基座对微信进程内 Qt accessibility 标志位的运行时写入，按选定版本验证；不宣称纯 UIA 或零侵入 |
+| 系统范围 | 不额外扩展为任意内存修改、DLL 注入、Hook、协议模拟、系统保护修改或登录限制绕过 |
+| 安装 | 助手在 Windows 执行安装、终端诊断和已选路线；客户端来源与签名要核实，不擅自覆盖现有客户端或聊天数据 |
+| 人工职责 | 打开微信、手机登录、核实账号/测试好友、发测试消息、确认对端收件、界面验收与录屏 |
+| 操作范围 | 基座选型与上述技术路线已确定；真实发送仍限明确绑定测试会话、非空白名单和显式 live |
 
-配置分组固定：
+doctor 必须保持只读：不构造会取钥或热激活的对象，不调用完整 WeChat() 充当纯环境检查。初始化、取钥、OCR 校准和热激活由显式 connect/开始操作触发，并展示实际执行步骤。初始化成功不等于消息读取/发送验收通过。
 
-| 分组 | `.env` 字段 |
+不以随机延迟、旧版或只读数据库承诺不会发生账号限制。检测到客户端退出、账号变化、无法识别会话或基座异常时进入 degraded，停止自动发送。
+
+## 3. 基座内化与应用边界
+
+### 3.1 内化方式
+
+在 Phase 1 把固定源码快照作为本地第三方依赖纳入 third_party/wechatauto_replica/，保留上游 wechatauto 包名、Apache-2.0 LICENSE、必要版权/NOTICE、包元数据、README_pypi.md 和运行资源。保留依赖所需模块，避免因顶层导入链裁剪造成运行时缺失；不复制 .git、账号数据、开发者代理指令或无关开发缓存。
+
+主项目通过 uv 的本地 path source 和仅 Windows 生效的 extra 接入。上游仍是独立 Python 包，应用只通过适配器调用，不将上游各模块散拷进 Agent 或 UI。提交包必须包含该本地依赖目录，不能依赖另一台电脑的绝对路径或临时 pip 安装。
+
+third_party/wechatauto_replica/UPSTREAM.md 记录来源、精确 SHA、导入文件、上游版本、资源、依赖和每个本地补丁；原依赖范围经 Windows 锁解析收敛到 uv.lock。升级是明确的补丁/版本变更，不在应用启动时自动拉取。
+
+仅对影响本期收发、身份、隐私或运行的具体问题做最小补丁；不重写 SQLCipher、OCR 引擎或整套 UI 自动化。当前尚未导入第三方源码，以下是实施目标。
+
+### 3.2 模块职责
+
+除 third_party/、ui/、scripts/ 和 tests/ 外，下表应用模块均位于 src/wechat_reply_agent/ 内。
+
+| 位置 | 职责 |
 | --- | --- |
-| 模型 | `LLM_BASE_URL/LLM_API_KEY/LLM_MODEL/LLM_TIMEOUT_SECONDS/LLM_MAX_INPUT_TOKENS/LLM_MAX_OUTPUT_TOKENS/LLM_MAX_CALLS_PER_TURN` |
-| 接入 | `WECHAT_ADAPTER/WECHAT_PROFILE/WECHAT_ACCOUNT_REF/WECHAT_ALLOWLIST/POLL_INTERVAL_SECONDS` |
-| 运行 | `SEND_MODE/COALESCE_WINDOW_MS/QUEUE_MAX_SIZE/MAX_SENDS_PER_MINUTE/CONFIRMATION_TTL_SECONDS` |
-| 存储 | `DATA_DIR/RETENTION_DAYS/MEMORY_CONTEXT_TOKENS/UPLOAD_MAX_BYTES/PARSE_TIMEOUT_SECONDS` |
-| 服务 | `APP_HOST/APP_PORT/APP_ENV/LOCAL_DEV_ORIGIN` 与示例业务接口配置；启用远端能力才增加对应 Key/Token |
+| third_party/wechatauto_replica/ | 上游读取、解密、WAL、UIA/OCR/键鼠能力与最小修复 |
+| adapters/wechat/replica.py、replica_bridge.py | 懒加载、账号绑定、字段规范化、原生调用、发送结果映射与能力报告 |
+| domain/ | 与第三方对象解耦的会话、消息、Agent、发送和运行契约 |
+| storage/ | 应用 SQLite、inbox/outbox、游标、上下文、记忆、知识与运行记录 |
+| runtime/ | 轮询、基线、事务入库、合并/队列、暂停代数、单实例与唯一 GUI 执行通道 |
+| agent/、llm/ | LangGraph 路由、模型、人设、上下文/预算、检索和记忆 |
+| api/、ui/ | 本地管理应用；UI 仅调用本项目 API，不直接操作基座 |
+| scripts/acceptance/、tests/ | 脱敏实机报告、合成回放与必要故障测试 |
 
-Settings 定义默认值并列入 `.env.example`，密钥仅空占位；GUI 接入不杜撰一个必填 IM Token。优先级为进程环境 > `.env` > 默认值；无 Key 仍可进入诊断/UI，使用真实模型时才校验。保存先校验再原子替换，环境覆盖项只读且显示来源，失败不损坏旧文件。API 只回掩码和 configured；密钥空输入表示保留、显式清除才删除，不把 `******` 当 Key 写回。
+最终链路：
 
-运行状态为 `stopped/starting/running/paused/degraded/stopping`，模式另为 `dry-run/live`。暂停增加运行代数，使旧队列和迟到模型结果失效；恢复不自动重发旧队列。切换到 live 要在停止状态、健康且白名单已解析后由用户重新开始。已发生的不可撤销按键可能完成，必须记录此边界。
+~~~mermaid
+flowchart LR
+  W[微信客户端] --> B[Replica 数据库读取]
+  B --> A[适配器与身份过滤]
+  A --> I[SQLite inbox 与游标]
+  I --> Q[会话队列]
+  Q --> G[LangGraph Agent]
+  K[知识与记忆] --> G
+  G --> O[SQLite outbox]
+  O --> S[Replica UIA 与 OCR 发送]
+  S --> W
+  U[本地工作台] --> R[应用运行服务]
+  R --> Q
+  R --> O
+~~~
 
-### 4.3 跨模块数据和存储契约
+### 3.3 复用与许可证
 
-| 对象 | 必需字段/行为 |
+原创 Agent、适配器、工作台等继续采用根 LICENSE 的 PolyForm Noncommercial 1.0.0。基座保留 Apache-2.0 和适用的修改声明，已有 MIT 改编代码保留原声明；不把上游原有代码的权利改成禁止商业使用。所有依赖/资源按各自许可列入复用登记和 THIRD_PARTY_NOTICES.md。
+
+应用的价值与改动要标清：微信读写来自基座，Agent 编排、应用状态、业务设计和集成为本项目实现。计划、文档和提交仅记录客观技术方案、变更与验证结果。
+
+## 4. 集成时的必要封装与已知限制
+
+以下来自固定快照的静态审阅，不是本机故障复现。Phase 1/2 优先处理会造成身份错误、重复发送或阻断当前演示的问题；不把完整底层审计升级为重建基座的前置任务。
+
+| 发现 | 应用采用的处理 |
 | --- | --- |
-| `ConversationRef` | 本地 account_ref/conversation_id/contact_alias、profile、身份依据/可信度；昵称不能冒充原生 wxid |
-| `InboundEvent` | event_id/conversation_id/source_message_id?/occurrence_ref/direction/type/text?/attachment_ref?/observed_at/trace_id/confidence；方向 incoming/outgoing/system/unknown，未知不可自动回复 |
-| `AgentResult` | reply_text/intent/citations/tool_run_refs/memory_changes/confirmation_ref?/usage/outcome；区分回复、待确认、无须回复和错误 |
-| `SendIntent` | outbox_id/conversation_id/input_event_refs/reply_text/run_generation/mode/status；一组输入唯一发送意图 |
-| `SendResult` | verified_sent/not_sent/unknown、确认依据/错误；按回车不等于对端送达 |
-| `AdapterCapabilities` | profile、消息类型、原始附件获取、身份/发送确认能力和窗口条件，供 doctor/UI/README 共用 |
-| `WechatAdapter` | health()、poll_events(cursor)、resolve_conversation(alias)、send_text(intent)；Mac 原生依赖懒加载，离线使用 FakeAdapter |
-
-SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGraph checkpoint 使用独立受控连接/库，不改第三方 schema。
-
-| 创建阶段 | 表/数据 | 职责 |
-| --- | --- | --- |
-| Phase 1/2，Phase 3 收敛 | contacts/conversations/messages/message_occurrences/outbox/runtime_state/schema_versions | 本地身份、消息观察/去重、发送状态、运行代数；原型数据直接迁移 |
-| Phase 6 | events/llm_runs | 脱敏执行轨迹、SSE 游标、实际 Token/耗时，不保存运维完整 prompt |
-| Phase 7 | documents/chunks/chunks_fts | 原名、hash/版本、分块、来源与中文检索 |
-| Phase 8 | tool_runs/confirmations；示例库 orders/tickets | 工具、会话级确认、幂等写入和虚构业务数据 |
-| Phase 9 | memories/memory_sources/memory_tombstones、checkpoint | 长期事实/来源、更正/遗忘抑制、短期状态 |
-| Phase 10 | analysis_jobs | 本地导入文件解析/分析状态和结果 |
-
-去重基于会话、方向、跨帧序列对齐和气泡出现次数，不能只用正文 hash。无法确定是否新消息时记录 gap/uncertain 并停发。首次启动建立可见基线，默认不补回观察前历史；已处理消息重启不能再回复，离线未知消息不承诺无损补收，UI/README 明示。
-
-### 4.4 API 和页面接线契约
-
-列表具备固定排序/分页/空态；错误为 code/message/trace_id，不返回异常栈。仅 loopback，校验 Host/Origin；本地会话使用 HttpOnly、SameSite cookie，写操作校验同源/CSRF。同源静态 UI/API；开发模式只允许明确本地来源，禁止通配 CORS。
-
-| API | 契约 | 阶段 |
-| --- | --- | --- |
-| `GET /api/session` | 建立本地会话与 CSRF nonce，不暴露后端凭据 | 6 |
-| `GET /api/health`、`GET /api/runtime` | capabilities/权限/状态/模式/队列/失败/用量 | 6 |
-| `POST /api/runtime/{start,pause,resume,stop}` | 严格状态迁移，非法 409，开始前检查健康/配置 | 6 |
-| `GET /api/events` | SSE、递增 event_id、Last-Event-ID 回放，过期提示重取快照 | 6 |
-| `GET /api/conversations`、`GET /api/conversations/{id}/messages` | 分页和明确方向/过滤/预览状态 | 6 |
-| `GET /api/runs/{trace_id}` | 分支/来源/工具结果/耗时/错误，无隐藏推理 | 6/8 |
-| `GET/PATCH /api/settings` | schema/掩码/来源/校验/原子保存 | 6，接线 14 |
-| `POST /api/diagnostics` | 只读健康及用户显式请求的模型连通检查，不发微信 | 6，接线 14 |
-| `POST/GET /api/knowledge/documents`、`GET/DELETE /api/knowledge/documents/{id}` | 导入、状态、来源/分块、删除同步索引 | 7 |
-| `GET /api/memories`、`PATCH/DELETE /api/memories/{id}` | 会话范围、事实版本冲突检查、更正/遗忘 | 9 |
-| `POST /api/analysis/files`、`GET /api/analysis/{id}` | 上传和分析任务，默认只分析、不发微信 | 10 |
-| `POST /api/analysis/transcripts` | 人工转写文本复用 Agent，标清来源 | 10 |
-| `POST /api/outbox/{id}/resolve` | 用户核实 unknown 后标已发/作废，不盲目重发 | 5/6 |
-
-示例业务接口也在本轮固定：`GET /demo-api/orders/{order_id}` 返回 order_id/status/estimated_delivery，`POST /demo-api/tickets` 接收 summary/conversation_ref/idempotency_key，返回 ticket_id/status。工具客户端使用 `.env` 的 `DEMO_API_BASE_URL/DEMO_API_TOKEN`；示例路由用独立服务认证，不能由聊天提供认证头，联系人可访问范围由本地绑定决定。同一 FastAPI 进程提供这些路径，工具仍经 HTTPX 调用，不要求用户额外部署一个服务；超时与错误都进入正式工具结果。
-
-四页固定为概览、会话、知识与记忆、设置；知识与记忆内为知识库/联系人记忆/文件分析三个页签。每个入口在所属阶段必须接真实后端。mock 仅用于测试和有明确标识的离线 demo。
-
-### 4.5 全阶段统一完成标准
-
-阶段完成须同时具备：任务实现、必要自动检查通过、该阶段必验人工结果、已有上下游接通、README/overview/复用记录同步、真实功能提交；不能有本阶段必做的 stub/TODO/假成功。未到开发阶段的入口可以不显示，但不能拿无动作按钮交验。
-
-每阶段生成 `.local/acceptance/phase-N/report.json`，字段为 phase/commit/environment/mode/cases[id,executor,expected,actual,status,evidence_ref]/failures。用例状态 passed/failed/not_tested；脚本只填自己执行的项，人工由用户确认。必验缺失/失败时阶段不完成。公开仅脱敏摘要；阶段事实只写本文件对应详情和主表，不另建重复进度账本。
-
-验收编号与测试入口在下文固定；执行时直接编写实现/测试和用户清单，不再先做一轮大模块规划。工具版本导致的小命令调整可以记录，验收目标不能静默变更。
-
-### 4.6 原题到最终交付的完整映射
-
-| 题目要求 | 必做实现阶段 | 最终可核对产物/证据 |
-| --- | --- | --- |
-| 实时监听、垃圾/白名单过滤 | 1–5 | 真实微信探针、会话路由、过滤原因、发送/去重记录；17 实机回归 |
-| LLM 理解意图与拟人回复 | 2、8 | 真实模型闭环、图编排、知识来源、HTTP 工具和确认；真实视频 |
-| 长短期记忆 | 9 | 持久 checkpoint、摘要、事实更正/遗忘、跨会话隔离和跨重启实测 |
-| 语音/文件分析应用思路 | 10、13 | 四类文件处理、转写入口、完整语音方案和真实能力表，不以占位充正文 |
-| 测试与使用视频 | 18 | 用户实际录制文件、场景覆盖与视频时间点；不能只有录屏脚本 |
-| macOS/不同微信版本稳定 | 1、2、4、5、15–17 | 至少两微信版本矩阵、60 分钟样本、故障恢复与准确限制 |
-| 代码和清晰 Commit 历史 | 每阶段、18 | 可运行源码、真实 Conventional Commits、history.bundle、来源许可证 |
-| 敏感配置和 Token 限制解耦 | 1、3、6、14、18 | .env.example、后端校验/掩码、配置保存和包/历史敏感检查 |
-| README 介绍/启动/使用指南 | 每阶段、15、18 | 干净目录启动验证、包内有效命令/链接、故障与能力边界 |
-
-## 5. 单一主阶段表
-
-用户要求在实施前细化，且旧阶段均未开始，因此此次统一重排：旧 1/2 保留；旧 3 对应新 3–6，旧 4 对应新 7–8，旧 5/6 对应新 9/10，旧 7 对应新 11–14，旧 8 对应新 16–17；启动集成独立为新 15，最终交付为新 18。以后使用新编号，不再使用旧编号 3–9 的含义。
-
-| 阶段 | 主题 | 可验收增量 | 状态 | 实际产物 | 依赖/人工关口 |
-| --- | --- | --- | --- | --- | --- |
-| Phase 1 | 微信通道原型 | 诊断、读取、固定回复正确 | blocked | Mac AX 研究；Windows 只读探针待实测 | Windows 执行环境；v3 G1 实机必验 |
-| Phase 2 | 最小 AI 闭环 | 白名单好友多轮真实回复与重启去重 | pending | 等待 G1，尚未实施 | Phase 1；G2 用户必验 |
-| Phase 3 | 配置和持久化 | 配置、迁移、身份与状态仓储 | pending | 等待 G1/G2，尚未实施 | Phase 2 |
-| Phase 4 | 可靠收消息 | 多会话、过滤、合并、排队与去重 | pending | — | Phase 3；用户实机必验 |
-| Phase 5 | 可靠发送与启停 | 复核、发件箱、未知恢复、取消迟到结果 | pending | — | Phase 4；用户实机必验 |
-| Phase 6 | 后端 API 和事件 | 控制/配置/会话 API、SSE、脱敏日志 | pending | — | Phase 5 |
-| Phase 7 | 知识库闭环 | 导入、分块、中文检索、引用、更新删除 | pending | — | Phase 6 |
-| Phase 8 | Agent 与业务工具 | 图编排、HTTP 查询、确认后写入 | pending | — | Phase 7；用户模型/微信必验 |
-| Phase 9 | 完整记忆 | 摘要、长期事实、隔离、更正和忘记 | pending | — | Phase 8；用户跨重启必验 |
-| Phase 10 | 文件和语音边界 | 四类文件、分析/转写入口、能力说明 | pending | — | Phase 9 |
-| Phase 11 | UI 基础和概览 | 统一布局、真实状态与启停 | pending | — | Phase 10；用户视觉必验 |
-| Phase 12 | 会话工作台 | 消息、执行轨迹、引用和未知处理 | pending | — | Phase 11；用户交互必验 |
-| Phase 13 | 知识记忆工作台 | 导入删除、更正遗忘、文件分析全接线 | pending | — | Phase 12；用户交互必验 |
-| Phase 14 | 设置诊断工作台 | 掩码、白名单、预算、保存与诊断 | pending | — | Phase 13；用户交互必验 |
-| Phase 15 | 启动与产品集成 | 单命令、静态资源、干净环境安装 | pending | — | Phase 14；用户干净启动必验 |
-| Phase 16 | 故障回归与就绪 | 离线回放、故障注入、交付检查 | pending | — | Phase 15 |
-| Phase 17 | 实机稳定与兼容 | 两微信版本、长时运行和关键场景 | pending | — | Phase 16；用户实机硬关口 |
-| Phase 18 | 视频与提交包 | v3 真实录像、最小源码/启动/限制归档 | pending | — | v3 Phase 3；用户录像与结果核对 |
+| get_new_messages 只用 sort_seq > since_seq；基座说明同一会话可有并列 sort_seq | 读取边界包含并列记录，以账号/会话/分片/local_id 标识去重；验证跨批/跨分片同序号，不只保存秒级时间或正文 hash |
+| Listener 会重试整个回调，耗尽后仍推进水位 | 默认由应用调度 WeChatDB 轮询，消息和应用游标事务落库；不把模型或 GUI 发送放入基座回调，不以其 JSON 水位作为唯一账本 |
+| 发送回读仍有 sender_id == 2 判断，分片编号未必代表本人 | 按当前分片解析 sender_username，与已绑定账号比较；解析不到为 unknown，不以数字常量判方向 |
+| verify=False 有省略会话复核的快捷发送；部分失败会触发内部重试 | 适配器禁用不复核的快速路径；补充单次发送边界和执行回执，回车可能发生后不得自动改走第二条发送路径 |
+| 回读水位获取失败可能退回匹配旧记录 | 无有效发送前水位不能自动判成功；按目标会话、新消息身份和完整文本核对，超时映射 unknown |
+| WAL 有 salt 过滤，但缺完整提交帧/累计 checksum 校验；失败可回退旧快照 | 复用现有解密与校验，验证坏库/旧快照错误可暴露并降级；目标环境发现一致性缺陷时做必要补丁。通用 WAL 恢复与完整校验不是本期重建任务，未覆盖的边界写入限制，不承诺无损 |
+| 默认账号选择/取钥存在自动回退，密钥与明文副本分散在临时目录 | 显式绑定账号与数据路径；禁止静默切到其他账号，缓存/备份/校准资料归入受控 DATA_DIR，按 Windows 当前用户 ACL 核查 |
+| 基座日志/返回值可能包含正文、昵称或密钥相关数据 | 统一拦截第三方日志，保留稳定错误码和脱敏摘要；原始证据仅留私有目录，不直接将上游结果回传给浏览器或终端 |
+| 现有主 CLI 无条件导入 fcntl/Mac 依赖 | Phase 1 改为平台隔离与懒加载，Windows 锁使用可用的跨平台实现，不要求 Windows 安装 PyObjC |
 
-## 6. 逐阶段可执行任务和验收用例
+这些修复是接入适配工作，不扩展为全版本兼容研究。修复后仍无法在固定环境完成 G1 时，记录具体失败和支持范围，不继续铺应用，也不静默换控制基座。
 
-顺序输入为前阶段已通过的提交。每阶段完成记录填真实改动、文件、检查、人工证据、跳过/偏差和下一阶段；不要新建第二张进度表。
+## 5. 应用运行与数据契约
 
-### Phase 1：微信通道原型与 G1
+### 5.1 启动与配置
 
-**目标/文件**：最终包与最小 CLI；`pyproject.toml/uv.lock/.env.example/.gitignore`、`config.py`、`domain/messages.py`、`adapters/wechat/base.py` 和选中的 `mac_vision.py` 或 `mac_ax.py`、`cli.py`、`tests/adapter/`；`docs/prototype-report.md`、`docs/reuse-register.md`、`THIRD_PARTY_NOTICES.md`、README 初版。
+目标唯一入口为 uv run wechat-agent serve；FastAPI 同源提供构建后的 React/TypeScript/Vite 页面，不自动打开浏览器。worker 初始 stopped、模式 dry-run、白名单为空。开发时可用单独 UI dev 命令，前端仅作类型/构建/必要逻辑验证，界面由用户验收。
 
-**任务**：
+| CLI 目标 | 行为 |
+| --- | --- |
+| `doctor --output <json>` | 只读检查平台、依赖、客户端版本和可用权限；不取钥、不热激活 |
+| `connect --output <json>` | 按已绑定配置初始化基座、取钥/缓存/校准/热激活，输出脱敏步骤结果 |
+| `probe read --contact <alias> --limit 5 --output <json>` | 通过 Replica 读取测试单聊，原文仅写私有报告 |
+| `probe send --contact <alias> --text <text> --confirm-send` | 一次显式固定回复；默认 dry-run，不确定时暂停 |
+| `prototype --mode dry-run或live --duration <seconds>` | Phase 2 最小 Agent 循环，复用正式包和账本 |
+| `serve --host 127.0.0.1 --port <port>` | 本地应用与 worker 管理，用户明确开始后才连接/运行 |
+| `replay --suite <name> --output <json>` | 合成输入回放，结果标为 offline，不接触微信 |
+| `verify` / `package --video <path>` | 检查/打包已存在的真实产物，不启动客户端、不上传或推送 |
 
-- [x] 审阅候选准确快照，登记具体文件/符号和许可证；不搬入整个上游 Agent/后台。
-- [x] 实现事件/适配器契约和最小 Settings、dry-run、空白名单停发；Mac 依赖与离线依赖隔离。
-- [x] 实现 doctor、probe read、probe send，报告环境/profile、方向、身份可信度和发送确认依据；不修改系统权限。
-- [x] 唯一联系人别名映射；同名、未知身份/方向一律停发。
-- [x] 编写 G1 步骤和报告输出，固定回复验证前不调用模型或做 UI。
+上述为实施目标；当前 CLI 仍是旧 Mac 原型，没有 Replica/connect/prototype/serve，不能将计划命令标为已可执行。
 
-**验收用例**：
+| 配置组 | 目标字段 |
+| --- | --- |
+| 微信 | WECHAT_ADAPTER=replica、WECHAT_PROFILE、WECHAT_ACCOUNT_REF、WECHAT_DB_ROOT、WECHAT_ALLOWLIST |
+| 基座 | WECHAT_OCR_ENABLED=true、WECHAT_UIA_GATE_ENABLED=true、私有缓存/校准目录；变更需停止后重连 |
+| 模型 | LLM_BASE_URL、LLM_API_KEY、LLM_MODEL、LLM_TIMEOUT_SECONDS、LLM_MAX_INPUT_TOKENS、LLM_MAX_OUTPUT_TOKENS、LLM_MAX_CALLS_PER_TURN |
+| 运行 | POLL_INTERVAL_SECONDS=15、SEND_MODE=dry-run、COALESCE_WINDOW_MS、QUEUE_MAX_SIZE、MAX_SENDS_PER_MINUTE |
+| 存储/服务 | DATA_DIR、RETENTION_DAYS、APP_HOST=127.0.0.1、APP_PORT、必要的知识/文件大小限制 |
 
-| 编号 | 输入/操作与预期 | 执行者 |
-| --- | --- | --- |
-| P01-01 | 合成消息字段完整；未知身份无法生成可发送意图 | 助手 |
-| P01-02 | 缺权限/微信未运行只返回诊断，不发送或更改权限 | 助手验证分支，用户实机诊断 |
-| P01-03 | 两位联系人各发 5 条，含连续同文；读取会话和方向正确 | 用户 |
-| P01-04 | 每位至少 1 条固定回复发对；切换/焦点不明则停发 | 用户 |
+配置优先级为环境变量 > .env > 默认值。API 仅返回 configured/掩码，空密钥表示保留，显式清除才删除；前端不使用 VITE_* 保存秘密。保存需先校验、原子替换，Windows/非 Windows 的设置读取与离线测试均可执行。
 
-**验证分工**：助手 `uv run pytest tests/adapter -q` 和 lint；用户 doctor→read→带 `--confirm-send` 的 send，确认实际结果。G1 必须有环境和用户结果，调用成功不能替代送达确认。
+### 5.2 身份、消息与消费
 
-**复用/日志/出口**：复用 RPA 或 AX 薄层，记录 `adapter.health/identity_uncertain/send.result`。缺权限/联系人或 G1 未通过则 `blocked`；同一问题最多两轮基于证据修正，仍失败报告备选，不自行操纵微信。通过后 Phase 2。
+- ConversationRef 包含本地别名、account_ref、原生会话 username 和身份依据；昵称只用于显示和绑定复核。
+- InboundEvent 记录原生来源的 account/session/shard/local_id、sort_seq、发送者、方向、类型和 observed_at；source_message_id 不冒充服务端 ID。
+- 消息唯一键包含账号代数、会话、分片和 local_id。sort_seq 仅作排序/扫描边界，不能独自保证唯一；库替换、账号切换或无法对齐边界时重新绑定并暂停。
+- 启动先记录基线，已持久化的未完成发送保持暂停，默认不补发停机期间历史。同文新消息独立处理；来源身份不足时不自动回复。
+- 读取事件、inbox 与应用游标在同一事务提交。模型只消费已入库事件，不直接驱动 GUI；同一会话串行，连续短消息可合并为一个输入批次。
 
-**完成记录（2026-10-21，部分交付，blocked）**：
+### 5.3 Agent 与发送
 
-- 已实现 `pyproject.toml/uv.lock/.env.example`、最终包内事件/适配器/最小配置/CLI、AX 候选/profile、合成 FakeAdapter、结构化边界日志、私有回执与单探针锁；新增 `tests/adapter/`、G1 报告初始化脚本、README、原型报告、复用登记、MIT 声明。已有 `.gitignore` 已覆盖私有证据/环境/产物，无需改写。
-- 审阅 A 的发送/布局与 MIT；改编 B 的 AX 遍历/识别符/输入与截图方向采样。AX 仅作 G1 待验证候选，尚未证实优于 A，最终适配器/profile 不冻结；具体文件、SHA、许可和改动见 `docs/reuse-register.md`。
-- 离线检查：Python 3.12.14；`uv sync --locked [--extra mac]`、47 项 pytest、ruff check/format、lock --check、CLI help、wheel/sdist 构建/隐私与 notice 清单检查均通过。Mac extra 仅 import/符号检查，没有执行原生 API、真实 doctor/probe、微信收发、浏览器或页面。
-- P01-01 passed；P01-02 的离线缺权限分支 passed，用户实机部分 not_tested；P01-03/04 not_tested。统一私有证据 `.local/acceptance/phase-1/{report.json,pytest.xml}`；公开脱敏说明 `docs/prototype-report.md`。
-- 安全/限制：仅用户当前前台测试单聊；标题绑定身份依赖用户核实账号/同名/单聊；方向是 0.7 置信截图启发式，unknown 停用自动回复；可见快照不声称跨帧去重。Return 尝试记 unknown 而非送达，无自动重试；失败可能留测试草稿，保留现场。完整 SQLite/outbox 恢复按后续阶段，不冒充本阶段已具备。
-- **人工关口与解除条件**：用户按 README 填私有 profile，执行 doctor、两联系人各 5 条读取及各 1 条固定回复，核对方向/同文/收件对象，验证错会话和焦点不明时停发，提供脱敏 P01-02–04 结果。缺少上述环境和证据，G1 不能通过。
-- 用户随后明确「需要安装或者终端执行的你都自己执行」，据此执行真实只读 doctor：macOS 27.0.1 / arm64，Accessibility 与屏幕录制权限均可用，桌面已解锁，微信进程未运行。修正 Quartz console key，新增合成原生桥回归；当前 48 项 pytest、ruff 均通过。修复提交 `dc60302`。真实报告 `.local/acceptance/phase-1/doctor.json`；无实际读取/发送，G1 等待用户打开登录微信并核对效果。
-- 后续用户确认已登录并指定测试单聊，本地建立 `test-a` 绑定（真实名称仅存忽略的私有 profile）。实测 doctor 已可用，检测微信版本 4.1.5（31960），非 App Store 安装（原始渠道未核实）；P01-02 passed。读取尝试因微信不在前台被正确拒绝，未读取/发送消息，P01-03/04 仍未验收，等待用户保持测试会话前台。
-- 用户保持测试会话前台后，读取实际触发，但 AX 返回 `ax_control_missing_or_ambiguous`。只读树诊断仅 5 个节点，无会话/消息/输入框；临时 AXEnhancedUserInterface 启用请求返回 -25208，前后 false。判定当前微信 4.1.5（31960）AX 候选不可用。按既定 A 备选审阅截图/OCR 源码与 MIT，新增本机 Vision 只读诊断（不发送、不将 OCR 行冒充消息），56 项离线测试及合成图片真实 OCR 通过。等待用户前台采样验证；G1 仍未通过，不进入 Phase 2/3。原始诊断仅存本地忽略目录，公开不含真实会话名或正文。
-- 无 OCR 核查：主进程消息树不可见，13 个同应用包辅助进程未暴露 AX 窗口；未发现原生 AppleScript 脚本字典。菜单存在 Copy/Select All/Paste，但当前 disabled，复制原始消息的能力仍 not_tested。停止视觉等待，优先考虑剪贴板取文验证；Windows UIA、数据库读取仅对比，未改变平台/数据库边界。完整脱敏发现见 prototype-report 的无 OCR 小节，G1 仍 blocked。
-- 按用户要求完成 GitHub 与全网无 OCR 读取调研，筛查十余个项目并核对关键源码/当前可用性，结果见 `docs/wechat-reading-research.md`。优先研究候选调整为可审计的只读 DB+WAL Reader（Gist / wx-cli-again），发现旧 Python new-messages 仅摘要、Rust 时间戳增量仍需补消息级游标；Chatlog 等旧依赖链已有移除/不可访问。此为选型建议，不执行真实取钥、重签/断点或数据库读取，不改变现有接入授权边界；G1 仍 blocked。
-- 进一步核查用户指定的 WeChat-AI-AutoReply 与 im-mcp：前者为 Windows OCR；后者有 Mac LLDB 取钥、解密/WAL、结构化消息 UPSERT 与 ID 游标，可提升为读取层优先候选。但当前自动同步最低 5 分钟，无发送能力，WAL 有效性/快照一致性、密钥日志和索引重建游标仍需补验证。详见调研文档固定源码快照；本轮仅公开源码研究，未安装/初始化或读取真实数据，G1 及阶段状态不变。
-- 授权原话「请自动完成 phase1-3」已保存为 `auto_until` 1–3；因 G1 硬关口停止，Phase 2/3 依赖未满足，不实现、不标完成。收到 G1 证据后按原授权续做；G2 仍须真人实测。实现提交 `7a7425c`（`feat(adapter): add guarded AX channel prototype and offline G1 tests`）；授权和阻塞状态另作文档提交。
+Phase 2 即使用最小 LangGraph：输入过滤 → 上下文 → 模型 → 输出校验 → 待发送结果；Phase 5 扩展检索/记忆节点，Phase 6 按选项接工具。聊天文本、知识和模型输出都是数据，不得变成任意终端命令或基座方法调用。
 
-### Phase 2：最小 AI 闭环与 G2
+outbox 由一组 inbox 输入唯一生成，记录运行代数、目标、草稿和状态。发送前验证账号/白名单/会话/草稿策略/焦点；按基座 UIA/OCR 复核，不因允许 OCR 而省略目标检查。初始只接受空白草稿，不覆盖既有用户内容。
 
-**目标/文件**：`llm/{base,client}.py`、`runtime/prototype.py`、最小 `storage/`、`routing/`、`tests/prototype/`；直接扩展 Phase 1 最终包。
+SendResult 保留 verified_sent / not_sent / unknown：
 
-**任务**：
+- verified_sent 必须带目标会话中新的本人发出记录及完整文本匹配证据，依据标为 local_db_confirmed；对端是否收到由 G1/G2 人工核对，不声称服务器送达回执。
+- not_sent 仅用于证实尚未发生发送动作的拒绝；超时、异常或缺少水位而可能已发送时为 unknown。
+- unknown 停止该会话自动发送，提供人工核实后标已发/作废的入口，不一键盲目重发。
 
-- [ ] 配置一种真实模型，实现请求/响应、超时、Token/调用预算；FakeModel 只用于自动测试。
-- [ ] 白名单→本人/系统过滤→最小上下文→生成→复核发送；连续消息合并和最小 SQLite 已处理记录。
-- [ ] 简短自然中文人设、输出长度受限；异常不把堆栈发给好友。
-- [ ] `prototype --mode dry-run|live --duration ...` 真正可运行，live 不自动启用。
-- [ ] 报告落定默认适配器/profile、窗口条件、模型契约，测量 30 条普通文本的耗时/Token。
+运行状态为 stopped/starting/running/paused/degraded/stopping。暂停或停止递增运行代数，废弃迟到模型结果；恢复不自动发送旧队列。单实例、单 GUI 执行通道，模型调用不能绕过 outbox 直接 SendMsg。
 
-**验收用例**：
+## 6. 单一主阶段表
 
-| 编号 | 输入/操作与预期 | 执行者 |
-| --- | --- | --- |
-| P02-01 | 离线收→模型→发闭环、超时和预算分支正确 | 助手 |
-| P02-02 | 微信“我叫小周→我刚才说叫什么”，追问正确 | 用户 |
-| P02-03 | 本人/白名单外不回复，无自循环 | 用户 |
-| P02-04 | 重启不重复回复已处理消息；同文新气泡仍可处理 | 助手与用户 |
-| P02-05 | ≥30 条测量；空闲轮询目标 ≤2 秒，普通文本端到端 P95 ≤20 秒，不含等待用户确认 | 用户采样，助手汇总 |
+| 阶段 | 主题 | 交付等级 | 状态 | 当前事实与依赖 |
+| --- | --- | --- | --- | --- |
+| Phase 1 | 基座内化、适配与固定收发 | 必需 | blocked | 公开源码已审阅；Windows G1 结果未回传，基座未导入 |
+| Phase 2 | 最小 Agent 闭环 | 必需 | pending | 等待 G1；真实模型/微信 G2 |
+| Phase 3 | 配置、持久化与运行控制 | 必需 | pending | 等待 G2；收敛原型到正式仓储 |
+| Phase 4 | 本地 API 与工作台 | 必需 | pending | Phase 3；前端仅静态验证，用户验收界面 |
+| Phase 5 | 知识检索与长期记忆 | 必需 | pending | Phase 4；复用 Phase 2 Agent 扩展 |
+| Phase 6 | 业务工具、文件与语音入口 | 可选，未选择 | pending | Phase 5；未选择则记录不纳入并转 Phase 7 |
+| Phase 7 | 集成回归、录像与交付 | 必需 | pending | Phase 5，以及已选择的 Phase 6 项 |
 
-**验证分工**：助手 `uv run pytest tests/prototype -q`；用户本地填 Key，验证真实模型与微信 G2。性能不达标先定位修正，改变目标须用户确认，不能挑样本。不能用 FakeModel 或控制台替代 G2。
+Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而扩大现有自动执行范围。达到 Phase 3 后停止自动推进，汇报结果；不能将 Phase 3 完成称为整个应用交付完成。
 
-**复用/日志/出口**：已有模型客户端、SQLite、适配器；同 trace 的 `route.decision/llm.result/send.result`。G1/G2 都通过才进入 Phase 3，缺证据则 `blocked`；后续按已冻结边界实现。
+### Phase 1：内化微信控制基座并通过 G1
 
-**完成记录**：未开始；执行后补充。
+目标文件：third_party/wechatauto_replica/、adapters/wechat/replica*.py、平台隔离的 cli.py、配置/profile、tests/adapter/、原型报告、复用登记和第三方声明。
 
-### Phase 3：配置、数据库与身份仓储
+任务：
 
-**目标/文件**：`config.py`、`storage/{database,migrations,repositories}.py`、`domain/`、`tests/config/`、`tests/storage/`；完整 `.env.example` 和 schema 说明。
+- [ ] 固定 SHA 导入源码与资源，记录许可、来源和本地补丁；本地 path 依赖在 Windows 锁定，Mac 不安装 Windows 原生包。
+- [ ] 实现 ReplicaAdapter/Bridge、明确账号与测试会话映射，归一化消息类型、发送者与方向；不启用上游全会话/媒体/朋友圈功能。
+- [ ] 处理第 4 节中影响当前通道的并列游标、方向、发送水位/重试、新鲜度与缓存/日志问题，保留可追溯补丁和必要合成回归，不扩展为通用底层重写。
+- [ ] Windows doctor/connect/probe read/send 可用，OCR/热激活按配置执行；移除 Windows 对 fcntl/Mac CLI 的运行依赖。
+- [ ] 先只读验证，再 dry-run，最后一次显式固定回复；每一步都有稳定错误、私有报告和停发出口。
+- [ ] 报告生成器补充 plan_version/foundation，旧案例和数据不自动填成新基座 passed。
 
-**任务**：
+验收：
 
-- [ ] 完成第 4.2 节全部配置、数值/路径校验、覆盖来源、掩码、原子保存；不输出实际 `.env`。
-- [ ] 把原型表迁到正式 schema，保留已处理消息；实现外键/唯一约束/事务/migration 和本地目录权限。
-- [ ] 建立 contacts/conversations/messages/message_occurrences/outbox/runtime_state 仓储；不使用猜测的原生 wxid。
-- [ ] 数据层备份/恢复和保留期清理，不能删除仍需恢复的 outbox；存储错误可读。
-- [ ] 固定业务 repository 方法；后续 Agent/API 共用，不直写多套 JSON 文件。
+- P01-01：无 Windows 原生库时仍可导入契约/配置并运行离线测试；doctor 不取钥、不写进程。
+- P01-02：Windows 版本、账号绑定、数据路径、缓存、基座能力记录准确，初始化失败不伪装 healthy。
+- P01-03：一个测试好友的 5 条文本含连续同文、本人消息，逐条内容/顺序/方向正确；未知方向、错目标和群聊被过滤。
+- P01-04：dry-run 不按键；显式固定回复由对端确认；草稿/焦点/目标不符拒绝，可能发送后的失败保持 unknown。
+- P01-05：合成同 sort_seq 跨批/跨分片、新旧同文发送回读和坏库/旧快照错误，验证应用能去重、拒绝错误确认并暴露降级；未覆盖的 WAL 边界明确披露。
 
-**验收用例**：`P03-01` 配置优先级、非法限额、缺 Key 诊断、掩码不回写；`P03-02` 空库/原型库迁移、重复迁移、新连接恢复；`P03-03` 同名不混、账号/会话隔离；`P03-04` 保存失败旧配置完整，清理/备份保留未决状态。
+完成记录：已有包、契约、Mac AX/视觉研究、旧 wxauto4 独立探针和 62 项离线测试；这些不等于 Replica 验收。当前无 Replica 导入、Windows 真实读取/发送或 G1 通过证据，保持 blocked。下一次先核对 Windows 工作区已有结果，不重复或覆盖当地成果。
 
-**验证分工**：助手 `uv run pytest tests/config tests/storage -q`，使用临时目录和真实 SQLite；无需用户微信操作，交付离线验收报告。
+### Phase 2：最小 LangGraph Agent 与 G2
 
-**复用/日志/出口**：Pydantic Settings、SQLite/aiosqlite；`config.validation/storage.migrate/storage.error`。仓储必须实现并可使用，不能仅交 schema 文档。下一阶段 Phase 4。
+目标文件：agent/graph.py、llm/、runtime/prototype.py、最小 storage/、tests/prototype/；直接扩展正式应用包。
 
-**完成记录**：未开始；执行后补充。
+任务：
 
-### Phase 4：收消息、过滤、去重与会话队列
+- [ ] 可配置真实模型、简短人设、结构化 AgentResult、输入/输出限制、超时和调用预算；FakeModel 仅用于离线测试。
+- [ ] 应用低频轮询、基线、inbox/游标事务、本人/系统过滤、连续消息合并与单会话串行接通 Agent。
+- [ ] 先持久化模型结果和 outbox，再由唯一 GUI 通道调用基座；回调/模型重试不重试已不确定的发送。
+- [ ] prototype 支持 dry-run/live、停止与错误报告；公开日志不含私聊或凭据。
 
-**目标/文件**：`routing/{filters,dedup,coalescer}.py`、`runtime/{poller,queues}.py`、`tests/routing/`；受控多会话轮询与持久化。
+验收：
 
-**任务**：
+- P02-01：离线跑通收→入库→模型→outbox→假发送，并验证模型超时、重复输入和发送未知分支。
+- P02-02：真实微信完成至少 3 轮问答，含“我叫小周→我刚才说叫什么”的上下文追问。
+- P02-03：本人、非白名单、系统和未知方向不触发模型/发送，无自循环。
+- P02-04：重复回调/轮询只生成一个 outbox；连续同文新消息可分别处理；重启重新建基线，不回复旧历史。
+- P02-05：记录真实轮询、模型和发送耗时，不以旧实时指标拒绝固定环境演示，也不隐瞒实际延迟。
 
-- [ ] 轮询白名单会话，明确当前/未读的检测边界；名字变化或无法唯一匹配转 degraded，不猜测发送。
-- [ ] 模型前确定性过滤空/系统/本人/非白名单/垃圾规则/低可信消息；保留可解释原因。
-- [ ] 跨帧对齐与 occurrence 去重，不只 hash 正文；启动基线、重启恢复、观察中断 gap 都落地。
-- [ ] 每会话 FIFO、公平轮询、全局有界队列、连续文本合并；A/B 不串，队列满可见降级，不静默丢弃。
-- [ ] 白名单移除立即使旧队列失效；合并事件可追溯到原 event_id。
+完成记录：未开始；G1 通过后执行，G2 必须有真实模型与对端核对。
 
-**验收用例**：`P04-01` 旧帧重放 10 次只处理一次；`P04-02` 两个合法“你好”新气泡保留出现次数，合并不丢语义；`P04-03` A/B 交替各 3 轮、本人/垃圾/移出白名单；`P04-04` 队列满/身份不明/观察中断有明确状态；`P04-05` 用户真实微信验证同文新消息、交替会话及过滤，无误路由。
+### Phase 3：配置、仓储与运行控制收敛
 
-**验证分工**：助手 `uv run pytest tests/routing -q` 与合成回放；用户 P04-05 为本阶段必验，不能只靠离线结果完成。
+目标文件：config.py、storage/database.py/migrations.py/repositories.py、runtime/service.py/worker.py、domain/ 与对应 tests/config、tests/storage、tests/runtime。
 
-**复用/日志/出口**：参考 RPA 去重，使用 asyncio 队列，不加消息中间件；`route.filtered/deduplicated/coalesced/queue_full`。下一阶段 Phase 5。
+任务：
 
-**完成记录**：未开始；执行后补充。
+- [ ] 收敛所有设置、来源、校验、掩码、原子保存；上游缓存/校准与应用 DATA_DIR 一起管理。
+- [ ] 原型数据迁移为正式 contacts/conversations/inbox/messages/outbox/cursors/runtime_state/agent_runs，保留既有身份与去重记录。
+- [ ] 实现 SQLite 事务/约束、单实例、跨平台文件锁、队列上限、运行代数、启停与 degraded 恢复。
+- [ ] 崩溃后未确认 outbox 暂停待人工处理；退出不遗留工作线程或继续操作微信。
+- [ ] 同步 README、接口、Windows 证据与许可证；到此达到现有自动范围终点。
 
-### Phase 5：可靠发送、发件箱恢复与启停
+验收：
 
-**目标/文件**：`runtime/{sender,controller,recovery}.py`、outbox repository、`tests/sending/`；统一启停和用户核实服务。
+- P03-01：配置优先级、非法配置与保存失败不损坏旧值，秘密不经 API/日志返回。
+- P03-02：迁移/重启保留 inbox/outbox/身份，无重复消息/意图；数据库替换和账号变化有明确拒绝。
+- P03-03：暂停后迟到模型结果不可发送，恢复不发旧队列；单实例、队列满与异常退出可恢复。
+- P03-04：Windows 干净工作目录可按锁安装和运行既有 CLI/prototype；离线与真实结论分别记录。
 
-**任务**：
+完成记录：未开始；完成后自动范围停止于 Phase 3，不自动实施工作台。
 
-- [ ] 事务创建唯一 SendIntent，全局 GUI 锁；发送前复核白名单/代数/会话/窗口，发送后依据能力确认。
-- [ ] 完整 pending/sending/verified_sent/failed/unknown/cancelled；发送后确认前崩溃置 unknown，不自动重发，不假称 exactly-once。
-- [ ] 用户可“核实已发/作废”，无盲目重发；仅对明确未发出的可恢复错误进行有界重试。
-- [ ] 完成运行状态、模式切换、取消队列、迟到结果作废、权限/锁屏降级和用户恢复；已发生按键的边界说清楚。
-- [ ] 单工作目录实例锁，异常退出可恢复，第二 worker 不能同时发送。
+### Phase 4：最终应用 API、工作台与统一启动
 
-**验收用例**：`P05-01` 同一意图重放无重复发；`P05-02` 模型处理中暂停，晚返回不发；`P05-03` 发送前/确认前/确认后崩溃各自正确恢复；`P05-04` 目标不符/权限失效/重复实例停发；`P05-05` 用户实测暂停恢复、会话切换、焦点丢失，不确定时待核实且不重发。
+目标文件：api/、ui/、runtime/services、cli serve、tests/api/ 与必要前端逻辑测试。
 
-**验证分工**：助手 `uv run pytest tests/sending -q`、FakeAdapter 故障注入；用户只用测试白名单执行 P05-05，结果未确认则阶段不完成。
+API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,pause,resume,stop}、GET /api/conversations、GET /api/conversations/{id}/messages、GET /api/runs/{trace_id}、GET/PATCH /api/settings、POST /api/diagnostics、POST /api/outbox/{id}/resolve。Phase 5 增加 /api/knowledge/documents 和 /api/memories 的必要增删改查，不新增第二套运行服务。
 
-**复用/日志/出口**：参考上游必要的发送复核/剪贴板保护；`outbox.transition/send.verify/runtime.transition`。下一阶段 Phase 6。
+任务：
 
-**完成记录**：未开始；执行后补充。
+- [ ] FastAPI 仅监听 loopback，同源服务静态页/API，校验 Host/Origin 和写操作来源；错误只返回稳定 code/message/trace_id。
+- [ ] 接通健康/能力、启停、会话/消息/Agent 记录、outbox 人工处理、配置掩码与保存、显式诊断 API。
+- [ ] React/TypeScript/Vite 工作台采用概览、会话、设置三个入口；空态、未连接、dry-run/live、unknown 与真实连接状态清楚。
+- [ ] 使用现有组件库构建简洁桌面布局；状态和时间线解释输入、回复结果与过滤原因，不展示隐藏思维链或基座原始对象。
+- [ ] serve 使用正式运行服务，初始停止，不自动打开网页；源码安装与构建后同源启动均可操作。
 
-### Phase 6：本地 API、SSE 与可观测性
+验收：
 
-**目标/文件**：`api/{app,runtime,conversations,settings,events,diagnostics}.py`、`observability/`、events/llm_runs migration、`tests/api/`、OpenAPI。
+- P04-01：API 状态迁移/分页/错误/来源校验通过，无秘密字段或原始异常。
+- P04-02：启停、保存、诊断、会话记录和 unknown 处理均调用真实后端，无占位按钮。
+- P04-03：前端类型检查与构建通过；用户验证界面、交互和微信状态同步。
+- P04-04：uv run wechat-agent serve 可从构建产物启动；没有 Node 开发服务器时仍能管理运行。
 
-**任务**：
+完成记录：未开始。
 
-- [ ] 完成第 4.4 节本阶段路由和统一错误；CLI/API 共用领域服务，不另写消息循环。
-- [ ] session cookie、CSRF、Host/Origin、loopback、配置掩码；诊断不附带发微信。
-- [ ] SSE 持久游标、Last-Event-ID 回放和过期提示；客户端断线不影响 worker。
-- [ ] trace 串起入站→分支→模型/知识/工具→发件箱；会话/用量/统计来自真实存储，不写死。
-- [ ] 执行详情采用扩展载荷契约，后续模块写入同一事件体系；第 8 节日志底座本阶段全部落实。
-- [ ] 提供阶段开发启动命令 `uv run uvicorn wechat_reply_agent.api.app:create_app --factory --host 127.0.0.1 --port 8765`；Phase 15 再收敛正式 serve，后续 UI 验收无需先完成打包。
+### Phase 5：知识检索与按联系人隔离的长期记忆
 
-**验收用例**：`P06-01` 启停合法/非法迁移、分页/空态；`P06-02` 非本地 Host/越源/缺 CSRF 拒绝、Key 不返回；`P06-03` SSE 重连回放、游标过期明确；`P06-04` CLI/API 状态一致、日志无凭据或原文。
+目标文件：knowledge/、memory/、agent/ 检索/记忆节点、相应仓储/API、工作台知识与记忆入口。
 
-**验证分工**：助手 `uv run pytest tests/api -q`，HTTPX/FastAPI 测试客户端；不打开文档页面/浏览器，内部阶段无需用户微信操作。
+任务：
 
-**复用/日志/出口**：FastAPI/Pydantic/标准 logging，复用已有运行服务。API 必须能真实调用；下一阶段 Phase 7。
+- [ ] 先支持本地 TXT/Markdown 知识导入、分块、jieba 中文切词与 FTS5 检索、来源引用、删除后不再召回；不增加向量服务。
+- [ ] 在既有 LangGraph 中加入确定边界的检索和记忆读取/更新；无知识命中时明确说明，不编造来源。
+- [ ] 区分短期上下文与长期事实；按账号/联系人隔离，支持偏好更正、查看/删除与跨重启保留。
+- [ ] 工作台可导入/删除知识、查看/更正/忘记记忆，并展示真实处理结果。
+- [ ] 聊天和文档不能修改系统设置、调用任意命令或读取其他联系人资料。
 
-**完成记录**：未开始；执行后补充。
+验收：
 
-### Phase 7：知识导入、检索与来源闭环
+- P05-01：虚构知识问答可定位来源，无命中和删除后结果正确。
+- P05-02：记住测试偏好，重启后仍可使用；更正与忘记生效，其他联系人不可见。
+- P05-03：知识/记忆入口接真实 API，失败有明确状态；用户在微信核对回复。
+- P05-04：模型输入受上下文预算限制，知识与记忆不会无界增长或直接进入运维日志。
 
-**目标/文件**：`knowledge/{ingest,splitter,index,retriever,service}.py`、知识路由/migration、`examples/knowledge/`、`tests/knowledge/`。
+完成记录：未开始。
 
-**任务**：
+### Phase 6：可选业务工具、文件与语音入口
 
-- [ ] TXT/Markdown 导入、hash 去重、版本与失败状态；文件只在受控目录，文档更新替换对应索引。
-- [ ] 复用分块器/jieba，FTS5 存中文分词结果；参数化和转义查询，返回有界 top_k、文件/章节/段落定位及版本。
-- [ ] 知识 API 全接通：列表、详情、分块预览、删除；删除后检索和后续引用均不能用旧数据。
-- [ ] 虚构售后/退换货/产品知识、已知答案和无答案样例；资料文本不当作系统指令。
-- [ ] 无命中返回结构化空结果，不编造知识。正式 Agent 在下一阶段接入这个实际服务。
+选择状态：未选择。Phase 5 后可直接进入 Phase 7；不为可选项预留无动作入口。
 
-**验收用例**：`P07-01` 导入/重复/更新/删除及来源一致；`P07-02` 中文短语、订单术语找到预期段落；`P07-03` 无命中、超长/特殊查询可控；`P07-04` 删除即索引失效，预览/引用版本相同。
+可选任务：
 
-**验证分工**：助手 `uv run pytest tests/knowledge -q`，真实 FTS5 和合成文件，不依赖外部向量服务/微信。内部验收结果可复现。
+- [ ] 业务工具：虚构订单查询和工单创建，Pydantic 参数校验/联系人范围约束；写入工具有会话级确认、过期与幂等。
+- [ ] 文件：按需扩展文本 PDF/DOCX 解析，复用成熟库；文件导入/分析明确标注人工来源。
+- [ ] 语音：复用基座可获取的本地素材或人工转写入口；ASR 为独立可替换配置，不承诺未下载音频可读。
+- [ ] 只对选中项接工作台、Agent 和测试；未选择项在 README 写明不纳入。
 
-**复用/日志/出口**：langchain-text-splitters/jieba/FTS5；`kb.ingest/reindex/retrieve/delete`。本阶段交付本期完整文本知识库，不留“再建设知识库”。下一阶段 Phase 8。
+验收：
 
-**完成记录**：未开始；执行后补充。
+- P06-01：选中工具参数、权限、取消/确认/幂等和超时分支正确，无真实业务写入。
+- P06-02：选中文件/语音能力使用合成样例和真实可得输入验证，不把占位符当正文。
+- P06-03：选中功能在最终应用与演示中可操作，其余入口隐藏。
 
-### Phase 8：LangGraph Agent、HTTP 业务工具与确认
+完成记录：未开始；未选择不标 passed，交付清单注明不纳入。
 
-**目标/文件**：`agent/{graph,state,policy}.py`、`agent/prompts/`、`agent/tools/`、`demo_services/`、tool_runs/confirmations migration、`tests/agent/`、`tests/tools/`。
+### Phase 7：集成回归、真实录像与源码交付
 
-**任务**：
+目标文件：scripts/acceptance/、docs/demo-script.md、docs/delivery-checklist.md、package/verify 命令与 dist/submission/。
 
-- [ ] 图包括载入上下文→意图/澄清→直接回答/知识/工具→结果校验→回复/待确认；复用 Phase 2 模型客户端、LangGraph 工具机制，有界循环。
-- [ ] 知识回答带有效来源；普通聊天不强制检索，无知识依据如实说明。
-- [ ] 真正由 HTTPX 调用的本地示例服务：订单查询、创建工单；虚构种子订单、权限/参数契约、持久工单。说明是示例系统，不假装连接真实企业业务。
-- [ ] query_order 校验联系人访问范围；create_ticket 先显示具体内容，确认绑定会话/参数摘要/TTL/幂等键，拒绝或过期不写入。
-- [ ] 工具/参数/HTTP 目标白名单、超时/预算生效；工具失败不能说成功，聊天/附件内容不能扩权。
-- [ ] trace 和执行 API 返回工具结果、知识来源、用量/耗时，不输出隐藏推理。
+任务：
 
-**验收用例**：
+- [ ] 以正式服务回放同文/重复事件、本人/未知过滤、模型失败、发送未知、暂停/重启和知识/记忆更新，必要自动检查通过。
+- [ ] 在唯一支持组合完成代表性微信对话及工作台操作；记录版本、窗口条件、延迟和已知限制，不要求第二版本或 24 小时运行。
+- [ ] 给出 3–5 分钟真实录像脚本：启动→好友提问与追问→知识问答→记忆→暂停恢复→工作台记录；选中 Phase 6 时再加入相应场景。
+- [ ] 用户录制并核对视频；真实读写、人工操作和实际等待如实呈现，剪辑标明，未实现能力不展示为已实现。
+- [ ] 交付包含应用源码、内置基座、锁文件、合成样例、许可/NOTICE、启动说明、脱敏验收摘要和视频；排除 .env、密钥、解密库、校准截图、私聊与运行缓存。
+- [ ] 从干净目录核对包内相对路径、uv 本地 path 依赖和启动；只打本地包，不默认推送、发布或上传。
 
-| 编号 | 输入/操作与预期 | 执行者 |
-| --- | --- | --- |
-| P08-01 | 直接聊天、知识、无命中、澄清分别进入正确分支 | 助手控制模型分支 |
-| P08-02 | 真实示例 HTTP 查询；A 不能查 B 的示例订单 | 助手 |
-| P08-03 | 确认后仅一条工单；拒绝/过期/跨会话确认均不写 | 助手 |
-| P08-04 | 超时/429/坏 JSON/注入/预算不产生误发或越权 | 助手 |
-| P08-05 | 真实微信聊天、知识、查单、确认/取消工单，语气和工具选择可接受 | 用户 |
+验收：
 
-**验证分工**：助手 `uv run pytest tests/agent tests/tools -q`，假模型控制分支、真实示例 HTTP/存储；用户验证真实模型选择能力。不能只靠关键词路由或假工具结果完成。
+- P07-01：必要 Python/前端检查通过，关键故障回放与运行状态一致。
+- P07-02：Windows 干净目录可安装并启动完整应用，third_party 不依赖开发机绝对路径。
+- P07-03：视频文件实际存在、可播放、展示真实闭环和支持限制，经用户确认。
+- P07-04：源码包/历史/录像不含秘密或无关私聊，许可与上游补丁记录齐备。
 
-**复用/日志/出口**：LangGraph/Pydantic/HTTPX；`agent.route/tool.request/result/confirmation.resolved`。下一阶段 Phase 9。
+完成记录：未开始。缺真实录像、G1/G2 或必需功能时不得标整个应用完成。
 
-**完成记录**：未开始；执行后补充。
+## 7. 验证、日志与协作纪律
 
-### Phase 9：短期压缩、长期事实与遗忘
+- 自动验证针对契约、身份/去重、事务/崩溃、Agent/接口和构建。微信、模型效果、界面和视频由用户核对，mock 不替代真人结果。
+- 助手不自行打开页面、Playwright、CUA 或 GitNexus；不创建子 agent、新会话、worktree 或自动 relay。前端只做静态/构建和必要逻辑测试。
+- 原生微信依赖懒加载，Mac 可运行应用纯逻辑测试；Windows 完成原生初始化、取钥、UIA/OCR、键鼠和真实收发。
+- 报告位于 .local/acceptance/phase-N/report.json，字段含阶段、commit、环境、模式、case/expected/actual/status/evidence_ref；人工项未核实为 not_tested，失败为 failed，无证据不填 passed。
+- 日志保留时间、事件、trace、脱敏会话/消息引用、耗时、状态和原因；不打印正文、昵称、完整 prompt、模型密钥、数据库密钥或隐藏思维链。
+- 第三方生成的密钥/备份/明文库/图片/校准资源同样纳入私有目录、保留期、删除与 ACL 检查，不能只忽略应用自己的文件。
+- 代码/文档/验证按功能形成真实英文 Conventional Commits，不默认 push；公开材料不包含聊天原话、非技术讨论或私有环境信息。
 
-**目标/文件**：`memory/{context,facts,retrieval,service}.py`、checkpoint/记忆 migration、记忆 API、`tests/memory/`。
+## 8. 续做与旧版本衔接
 
-**任务**：
+1. 下一次先读本计划、overview 和 Windows 接入说明，核对当前工作区、提交、已有 Windows 证据及适用约束。
+2. 不再安装旧 wxauto4 探针依赖，不按旧 Mac AX/OCR 选型继续试错；旧文件只作历史，必要契约和测试可复用。
+3. 当前实现暂停；明确继续后沿原 auto_until 1–3 执行。G1/G2 缺失或环境未就绪时记录 blocked 和解除条件，不能跳关。
+4. Phase 1–3 编号保持，旧 Phase 4–6/11–15 相关应用集成合并到新 Phase 4；旧 7/9/13 的知识记忆归新 Phase 5；旧 8/10 的工具与附件归新 Phase 6；旧 15–18 的打包/验证/录像归新 Phase 7。
+5. 旧用例编号和报告保留其日期与方案，不改写旧测试结果，不将其映射成新基座已通过；新记录注明 plan_version=v4 和 foundation=replica。
+6. Phase 3 后仍保留当前授权终点；后续实施按明确阶段/范围指令推进，不因已写出计划而自行执行。
+7. 运行时遇到上游缺陷只做必要且可追溯的补丁；改变产品范围、控制路线或支持声明须明确更新本计划。
 
-- [ ] 持久 checkpoint、近期窗口和超预算滚动摘要；待确认/工具状态保持结构化，不依靠摘要记住状态。
-- [ ] 事实包括账号/会话、键值、来源、版本、更新时间/TTL；有依据才写入，不把模型推断当确认事实。
-- [ ] “叫我小周→改叫小李→忘记称呼”；更正替代旧值，遗忘清理检索/摘要影响并留不含原值的抑制标记，避免旧聊天自动再提取已忘事实。
-- [ ] 按命名空间召回、预算内注入；A/B 隔离，公共知识与个人事实访问分开。
-- [ ] 列表/更正/删除 API、版本冲突与真正删除生效；新进程可恢复正确事实。
+## 9. 最终完成条件
 
-**验收用例**：`P09-01` 多轮指代和超预算摘要；`P09-02` A/B 隔离、重启召回；`P09-03` 更名不再用旧值、遗忘后旧摘要不复活；`P09-04` TTL/来源/冲突/删除 API；`P09-05` 用户真实微信记住→重启→召回→更正→忘记。
-
-**验证分工**：助手 `uv run pytest tests/memory -q`，检查新进程及真实 SQLite 状态；用户 P09-05 本阶段必验，不能写“最终再验”。
-
-**复用/日志/出口**：LangGraph SQLite checkpointer、已有仓储；`memory.read/write/update/delete/context.compact`。下一阶段 Phase 10。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 10：文件处理和语音应用方案
-
-**目标/文件**：`multimodal/{types,parsers,transcripts,analysis}.py`、analysis_jobs migration、analysis API、`tests/multimodal/`、`examples/files/`、`docs/multimodal-design.md`。
-
-**任务**：
-
-- [ ] TXT/MD、文本型 PDF、DOCX 四类必做解析；复用 pypdf/python-docx，可选择导入知识或一次分析，两者不能混淆。
-- [ ] 校验大小/类型/长度/超时，禁止任意路径、执行、外部链接拉取；扫描/损坏/加密 PDF 给出明确结果。
-- [ ] 文件分析/人工转写复用 Phase 8 Agent，标人工导入；默认只返回结果，绝不自动向某个好友发送。
-- [ ] 交付 voice→获取→解码→ASR→文本事件→Agent 的完整设计、ASR Protocol、转写入口和成功/超时契约测试；不把假 ASR 测试说成真实原生支持。
-- [ ] capabilities 使用 designed/fixture_verified/live_verified/unsupported；微信文件名或“语音”占位不能当正文。
-
-**验收用例**：`P10-01` 四类文件抽出预期正文并分析；`P10-02` 知识导入可检索，一次分析不污染知识；`P10-03` 超大/损坏/加密/扫描/路径越界可解释失败；`P10-04` 转写入口共用 Agent、附件指令不扩权；`P10-05` 能力表与实际入口/证据一致。
-
-**验证分工**：助手 `uv run pytest tests/multimodal -q`，合成文件。原生微信音频/附件获取不列必验；用户另测可按事实升级能力状态，不能据此留下本期必做欠项。
-
-**复用/日志/出口**：pypdf/python-docx 和既有 Agent；`attachment.parsed/rejected/analysis.result`。下一阶段 Phase 11。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 11：UI 基础、布局和概览
-
-**目标/文件**：`ui/package.json/package-lock.json`、`ui/src/app/`、`styles/tokens.css`、`components/`、`lib/{api,events}`、`pages/Overview/`、`docs/ui-design.md`。
-
-**任务**：
-
-- [ ] 直接按第 7 节做亮色 token、系统字体、统一控件、224px 侧栏、页头/状态条；只做四页既定结构，不再规划新产品。
-- [ ] 同源 API/CSRF 客户端、typed DTO、SSE 重连/快照恢复；真实/离线/预览始终可辨。
-- [ ] 概览接真实健康/队列/失败/用量及启停；开始按钮提示具体缺失项，暂停停止遵守 Phase 5。
-- [ ] 加载/空/断连/失败/禁用齐全；响应式、长文本、焦点/标签/reduced motion；未实施页面不伪装成功。
-- [ ] 复用 shadcn/Radix/Lucide，统一表单/按钮/对话框/表格，避免双视觉系统。
-- [ ] 实现 `npm --prefix ui run dev -- --host 127.0.0.1` 与 `/api` 本地代理，开发来源显式配置；给用户完整后端/前端启动步骤，不能到 Phase 15 才可验收 UI。
-
-**验收用例**：`P11-01` 类型/构建/客户端错误状态；`P11-02` 用户在 1280×800、1440×900 检查留白/层级/对齐/对比度；`P11-03` 概览状态和启停真实；`P11-04` 后端断开/恢复有提示，重连不留旧状态。
-
-**验证分工**：助手 `npm --prefix ui run typecheck`、`npm --prefix ui run build`、必要客户端状态测试，不打开页面；用户 P11-02–04 为本阶段必验，视觉未确认不完成。
-
-**复用/日志/出口**：组件库与 Phase 6 API；`ui.control/api.error/stream.state` 边界日志。下一阶段 Phase 12。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 12：会话列表、消息和执行时间线
-
-**目标/文件**：`ui/src/pages/Conversations/`、`components/{ConversationList,MessageList,RunDrawer,OutboxResolution}`，必要 DTO 修正。
-
-**任务**：
-
-- [ ] 分页/选中会话与消息；清楚展示方向、时间、过滤/预览/待确认/失败/未知，dry-run 不显示已真实发送。
-- [ ] 详情侧栏包含可读步骤、来源、工具输入摘要/结果、预算/耗时/trace，无思维链/凭据。
-- [ ] unknown 可核实已发/作废并说明影响，无盲目重试或任意联系人发送入口。
-- [ ] SSE 更新到正确会话，保持滚动/分页/选中；长中文/引用、无消息/已删会话/断连均处理。
-
-**验收用例**：`P12-01` 用户切 A/B 无消息/trace 串线；`P12-02` 知识/工具/确认沿同 trace 可解释；`P12-03` 预览/真实、unknown/已发可辨，核实操作生效；`P12-04` 加载/空/长文/断连恢复布局正常。
-
-**验证分工**：助手构建/类型检查、关键分页/事件 reducer 测试；用户逐项交互验收。仅修正所属实现，不把页面问题推到最终一轮大修。
-
-**复用/日志/出口**：UI11 组件与既有 API；`outbox.resolved` 共用服务。下一阶段 Phase 13。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 13：知识、记忆与文件分析页面
-
-**目标/文件**：`ui/src/pages/KnowledgeMemory/{KnowledgeTab,MemoryTab,AnalysisTab}`、上传/分块详情/记忆编辑等通用控件。
-
-**任务**：
-
-- [ ] 知识页签导入四类文件、展示解析/索引状态、查看来源/分块、删除后同步列表和检索。
-- [ ] 记忆页签按联系人查看事实/来源/时间，更正/遗忘调用正式 API，版本冲突提示重载，删除确认。
-- [ ] 分析页签接一次文件分析和人工转写，区别于知识导入；展示来源和能力，不误导可自动读所有微信语音。
-- [ ] 上传/处理中/失败/超大/重复/空态都有文案，成功后能查到后端记录，不只显示 toast。
-
-**验收用例**：`P13-01` 用户导入/预览/删除真实改变检索；`P13-02` 更正/忘记后 Agent 不再用旧事实；`P13-03` 四类分析及错误可见，转写来源清楚；`P13-04` 控件、密度、状态/焦点与概览一致。
-
-**验证分工**：助手构建/类型检查和上传/轮询/版本冲突状态测试；用户页面/模型交互必验。按钮当阶段全接通，不留大模块后续实现。
-
-**复用/日志/出口**：Phase 7/9/10 API 与 shadcn 控件，复用对应事件。下一阶段 Phase 14。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 14：设置、白名单和诊断页面
-
-**目标/文件**：`ui/src/pages/Settings/`、配置表单/敏感字段/ProfileCapabilityPanel/诊断控件；配置 schema 同步。
-
-**任务**：
-
-- [ ] 模型、白名单/profile、预算/频率、存储保留分组；即时提示，以后端校验为准。
-- [ ] Key 仅输入/替换/清除，已有值只显示已配置；空保留/掩码不提交，环境覆盖只读；保存后重载生效值。
-- [ ] 白名单绑定唯一映射，需要重启项清楚提示；live 不能运行中静默启用，移除联系人立即失效。
-- [ ] 诊断显示权限/微信/profile/存储/模型连通/支持能力；用户显式点模型检查才请求服务，诊断不发微信。
-- [ ] 保存失败、重启要求、无 Key、非法限额/网络异常可操作，不回显 Key 或异常栈。
-
-**验收用例**：`P14-01` 保存→刷新/重启仍生效；`P14-02` 保留/清除 Key 正确、非法值不破坏旧配置；`P14-03` 白名单移除/同名/模式规则真生效；`P14-04` 诊断真实且无凭据泄露、视觉一致。
-
-**验证分工**：助手构建/类型检查和设置合约测试，使用假 Key；用户本机设置/诊断必验，无需向聊天提供密钥。
-
-**复用/日志/出口**：已有 Settings/诊断服务与控件；`settings.saved/restart_required/diagnostics.result`。下一阶段 Phase 15。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 15：单命令启动、静态资源与干净安装
-
-**目标/文件**：正式 `cli.py`、应用 lifespan、静态挂载、`scripts/bootstrap.sh`、依赖 extras/锁、README 启动章节、`tests/packaging/`。
-
-**任务**：
-
-- [ ] bootstrap 检查 Mac/Python/Node/uv、装锁定依赖/构建 UI/初始化目录；不自动装微信、授权、降级或开浏览器，不静默改 `.env`。
-- [ ] serve 同源 UI/API、初始 stopped/dry-run；SPA 回退和 API 404 分开，不能把接口错误返回 HTML。
-- [ ] SIGINT 取消新工作、保护未决 outbox、关库；端口占用、重复实例、缺 UI 构建错误清楚。
-- [ ] README/CLI help 一致：安装→配置→doctor→启动→用户打开地址→启用；有停止/重启/恢复及桌面会话要求。
-- [ ] 无开发机绝对路径，干净拷贝/新虚拟环境可启动，不依赖上游目录、既有 node_modules 或 `.local`。
-
-**验收用例**：`P15-01` 构建、安装包/导入/静态资源；`P15-02` API404/SPA刷新/端口占用/退出；`P15-03` 用户新环境按 README 完成配置→doctor→启动→页面→真实回复；`P15-04` 无 Key 可诊断、无误发。
-
-**验证分工**：助手非 GUI 安装/构建/API 测试；用户干净环境真实启动与刷新必验。缺启动脚本或仍需另部署后台不得完成。
-
-**复用/日志/出口**：uv/npm/FastAPI，不做原生安装器；`app.startup/shutdown/instance_lock`。下一阶段 Phase 16。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 16：完整离线回归、故障与就绪检查
-
-**目标/文件**：`tests/replay/`、`tests/faults/`、`scripts/acceptance/`、verify 命令、`docs/acceptance.md`、runbook 故障索引。
-
-**任务**：
-
-- [ ] 汇总 P01–P15，覆盖聊天、重复/连续消息、知识/工具/记忆、文件/设置；模块测试在各阶段已具备，不到此才首次补测。
-- [ ] 注入模型/工具超时、429/5xx/坏响应、队列满、库不可写、崩溃、发送 unknown、暂停晚回/SSE 断线，验证既定恢复。
-- [ ] verify 检查配置 schema、依赖锁、迁移、离线场景、前端构建/资源并出报告；人工项保持真实结果，不填虚假 pass。
-- [ ] 日志和保留期有效，不刷敏感内容；缺陷按原 Phase 5/6/12/14 等归属修复，不新增大模块计划。
-- [ ] 给 Phase 17 用户可直接执行的用例、采样/环境字段、失败报告出口和停止条件。
-
-**验收用例**：`P16-01` 全量确定性测试通过；`P16-02` 故障无误发/错写/无限循环；`P16-03` trace 定位失败、离线/真实和自动/人工证据分明；`P16-04` 新临时目录 verify 不读私人数据/Key、不启动页面/微信。
-
-**验证分工**：助手 pytest、ruff、UI typecheck/build、`uv run wechat-agent verify --output ...`。此前必验未过则回所属阶段修复；本阶段只回归/修缺陷，不负责尚未开发的主功能。
-
-**复用/日志/出口**：pytest/HTTPX/FakeAdapter 与正式服务；下一阶段 Phase 17。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 17：真实多版本兼容与持续运行
-
-**目标/文件**：用户运行既有验收入口；`docs/compatibility.md`、`docs/acceptance.md` 填脱敏结果和支持边界。
-
-**任务**：
-
-- [ ] 两个不同 Mac 微信版本跑同一关键集，记录 macOS/架构/版本/发行渠道/语言/profile/窗口与解锁条件/日期；不擅自重装降级。
-- [ ] 每版本涵盖双联系人交替、连续同文、本人/非白名单/垃圾、知识、查单/工单确认、记忆更正忘记、重启/暂停恢复/网络异常。
-- [ ] 主环境连续 ≥60 分钟、≥50 条正常文本及 20 条应过滤消息；错对象/白名单外自动回复/自循环均 0，正常文本成功率 ≥95%，所有失败保留。
-- [ ] ≥30 条普通文本测 P95 ≤20 秒及轮询目标；包括排队/模型/发送、不含等待确认，不挑最佳样本。
-- [ ] 用户验证锁屏/睡眠/最小化/焦点被抢，不能工作时显示 degraded 和恢复要求；四页视觉/真实状态最终一致。
-
-**验收用例**：`P17-01` 两版本有可审阅证据；`P17-02` 长时间/样本/成功率/零错对象达到目标；`P17-03` 所有失败可定位、unknown 不偷重发；`P17-04` 矩阵仅标实测、最终 UI 通过。
-
-**验证分工**：用户全部实机/模型/界面操作；助手分析脱敏结果并修正既有模块。缺第二版本、样本或关键安全失败则 blocked，mock/架构可扩展不能替代。兼容修正限定在 profile/适配器契约；若需新技术则报告原型假设失败，不隐瞒。
-
-**复用/日志/出口**：复用验收脚本/trace，原始数据留本机；通过后 Phase 18 只录像归档，不补主功能。
-
-**完成记录**：未开始；执行后补充。
-
-### Phase 18：真实录像、README 与最终可提交包
-
-**目标/文件**：README 终版、`docs/{demo-script,delivery-checklist,submission}.md`、package 命令、`dist/submission/` 和校验清单。
-
-**任务**：
-
-- [ ] README 含介绍、架构/复用、准确矩阵、权限配置、安装启动使用、测试、隐私边界、恢复、语音文件思路和视频；不再新开文档规划。
-- [ ] 给可直接录制的脚本：启动/模式→好友聊天追问→过滤→知识→查询及确认/取消→记忆跨重启/更正/忘记→暂停恢复→工作台/能力边界。建议 5–8 分钟，剪辑标清重启，不伪造实测。
-- [ ] 用户录真实视频并确认可交付；实际文件可用、覆盖场景、无 Key/无关私聊。只有脚本不算视频完成。
-- [ ] 包含可运行源码/锁/合成样例/许可证来源/README/脱敏验收摘要/视频；排除 `.env`、真实数据/截图/依赖缓存；附 `commit-history.txt` 和通过敏感检查的 `history.bundle` 保留真实历史。
-- [ ] `dist/submission/` 有完整可解压压缩包、校验和、提交说明；按包内布局核对文档/视频相对链接，不依赖开发机路径或不存在地址。
-- [ ] 核查工作树/历史/包清单、Conventional Commits、依赖命令和必验结果；泄露必须清理并处理凭据，不能只加 gitignore。
-- [ ] 默认本地压缩包满足“压缩包或仓库”；用户另选 GitHub/GitLab 时按明确仓库/可见性/发布授权推送，不擅自公开/上传。
-
-**验收用例**：`P18-01` 用户新目录解压，按包内 README 启动并真实对话；`P18-02` 视频真实覆盖且可用；`P18-03` 包/历史无密钥私聊、许可证与真实提交完整；`P18-04` 原题每项映射到文件/测试/视频时间点，18 阶段无必做欠项。
-
-**验证分工**：助手清单/链接/历史/离线检查，用户录像/播放/最终解压启动。缺视频或前阶段必需证据则 blocked，不报“代码完成，交付后补”。
-
-**复用/日志/出口**：标准 zip/git bundle/hash。通过后用户可直接交包，无下一轮大模块开发；外部发布未授权不妨碍已完成本地包交付。
-
-**完成记录**：未开始；执行后补充最终产物、校验和、用户验收和原题映射。
-
-## 7. UI 设计约束（Phase 11–14 直接实施）
-
-这是本地管理工作台，不制作营销首页。风格参考成熟协作软件的低噪声界面：排版优先、留白充分、信息可读、状态明确，避免大面积渐变、霓虹、玻璃卡片和无意义仪表盘。
-
-- 导航固定为“概览 / 会话 / 知识与记忆 / 设置”，日志和具体工具结果用详情侧栏展开，主界面不堆实现术语。
-- 亮色优先：背景 `#F7F8FA`、表面 `#FFFFFF`、主文本 `#17212B`、次文本 `#667085`、边线 `#E7EBF0`；强调色 `#167D64`。错误/警告独立语义色；实际对比度在实现时检查。
-- 系统字体，中文跟随系统；正文 14–15px、标题 20–24px，数字等宽；8px 间距基准、8–12px 圆角、极轻阴影，减少无边界卡片嵌套。
-- 桌面布局侧栏约 224px、内容最大宽约 1440px；以 1280×800 和 1440×900 作为人工检查尺寸，较窄时折叠导航、不隐藏核心操作。
-- 主按钮有单一优先级：开始/暂停；“真实发送”和“仅预览”具有持久且清晰的模式提示。预算/凭据只放设置，日常会话不显示原始 JSON。
-- 用会话和执行时间线解释“为什么回复/为什么过滤”，提供适量结果摘要与知识引用，不展示思维链。
-- 轻量动效 120–180ms，尊重 reduced motion；使用 Lucide 统一图标，不用 emoji 代替主要图标体系。
-- 如后续明确使用设计 skill，先确认其适合本地项目，告知用户并读取指令；不得因此自动打开页面、使用 Playwright、发布网站或扩大产品范围。本计划不要求创建 Figma 文件或托管站点。
-
-## 8. 关键链路日志、隐私与测试分工
-
-使用 Python `logging` 输出单行结构化 JSON，稳定字段为 `timestamp/level/event/trace_id/conversation_ref/message_ref/adapter/duration_ms/outcome/reason`。标识用本地不透明代号或稳定摘要；不是微信真实身份的 ID 必须明确命名。以下为长期诊断信息，不是临时调试打印：
-
-| 链路 | 记录边界 | 避免噪声/泄露 |
-| --- | --- | --- |
-| 接入→路由 | 连接状态变化、新事件、方向不明、过滤/去重原因、排队 | 静止轮询只记采样健康指标，不输出每帧或原始消息 |
-| Agent→知识/模型 | 分支、检索命中数、模型调用次数、Token 数、耗时、失败类别 | 不记录完整 prompt、回复、知识正文或模型隐藏推理 |
-| 工具→系统接口 | 工具名、参数校验结果、确认状态、调用成败/幂等命中 | 不记录 Token、认证头、真实订单详情或任意响应大包 |
-| 记忆→存储 | 读写数量、命名空间代号、更正/删除、数据库错误 | 不把用户偏好/隐私事实原文写入运维日志 |
-| 发件箱→微信 | 发送状态迁移、会话复核结果、失败/未知和恢复 | 不凭“按下回车”记录为已确认送达，不自动重发未知结果 |
-| UI→运行控制 | 启停、模式切换、配置字段名、SSE 连接变化 | 不输出配置值；高频状态推送不逐条刷日志 |
-
-原始聊天、截图、数据库、报告及 Key 默认存放 Git 忽略的 `.local/` 或运行目录，带保留期限；公开 evidence 仅含人工确认脱敏内容。启用远程模型/OCR/ASR 时 UI 和 README 说明哪些必要内容会发给配置的服务商。不读取或打印现有 `.env` 内容以“检查配置”。
-
-自动验证只覆盖纯逻辑、存储、接口和构建；关键真人验证由用户负责。每阶段明列的必验人工项不能等到 Phase 17 才首次做，Phase 17 是多版本与长时间回归。助手交付清单时写明前置条件、步骤/命令、预期、记录字段和失败出口。缺失结果为 `not_tested`、失败为 `failed`、环境缺失阶段为 `blocked`；无证据不得填 `passed`。
-
-## 9. 后续执行契约
-
-1. 首先读取本计划和 `docs/overview.md`，再核查当前工作树与适用用户约束。初始计划创建后停在评审，不开始 Phase 1；无需额外 executor skill。
-2. 默认 `manual`。用户“执行 Phase X”仅执行该阶段；“继续”先复查相关 `blocked` 条件，再选择首个 `in_progress`，否则首个可执行 `pending`。被未完成依赖阻塞时报告依赖，不跳过 G1/G2。
-3. 计划存在后，用户可明确授权“自动完成剩余阶段”切换 `auto`；或“自动执行 Phase 1 到 Phase 5 后停止”切换 `auto_until`。先校验并记录原话与范围，再实现。没有这类指令不得推断自动授权。
-4. `auto` 的起止字段均为 `none`。`auto_until` 起止必须是表中存在的包含式范围；省略起点取当前 `in_progress`，否则首个 `pending`，按主表将“再做 N 阶段”等转换为具体终点。范围错误保留原模式并澄清。
-5. 自动模式每阶段开始前重读状态、依赖和边界，将选中项置 `in_progress`；完成后更新该阶段完成记录、唯一主表和 overview，再选择下一个范围内阶段。已完成阶段不重跑。
-6. 自动模式不因非阻塞的附加建议停止；但 G1、G2、各功能/UI 阶段的必验人工项、Phase 17 实机矩阵、Phase 18 录像缺失必须停止，将阶段置 `blocked` 并记录解除条件，保留自动模式和范围，用户取消自动才改模式。
-7. 任一明确单阶段命令仅限本轮该阶段，即使当前持久模式为自动也不能连续执行；不擅自更改持久模式。后续“继续”再按保存模式执行。
-8. `auto_until` 只选起止范围内的阶段；全部必需阶段及任何必需交付返回验证完成后，改回 `manual`，起止清为 `none`，在该终点完成记录中注明已达授权边界，不执行下一阶段。仅终点完成不代表中间阶段已完成。
-9. 后续如目标阶段被拆分，原阶段终点映射到最后一个子阶段；只有用户明确点名子阶段时才能在该子阶段停下。已经全部完成的范围先审计交付，再结束授权，不重新实现。
-10. 本轮已按用户要求完成评审前细化；实施中不因“大模块尚未规划”新建计划。仅真实证据证明阶段不能安全完成时，才在本文件最小拆为通常两个子阶段，先同步主表/详情/验收再实现；不静默扩范围、改验收或重编号无关阶段。
-11. 有产品歧义、外部授权、真实环境缺失或验证失败且无安全修复时，记录阻塞与解除条件；不自行申请/购买服务、修改系统设置、发送消息、发布或扩大业务范围。
-12. 每次阶段完成记录写入对应阶段：实际文件/改动、执行检查与结果、跳过项、偏差、证据路径、人工项和下一建议。不另建重复的全局完成记录。
-13. 从实施开始按功能形成真实 Conventional Commits，如 `feat(adapter): ...`、`feat(agent): ...`、`fix(runtime): ...`；按授权和适用 git skill 提交，不擅自 push，不留到最后补造历史。本次只细化计划，不创建代码提交。
-14. relay 默认 `off`，不自动新建会话、worktree 或交接。以后用户明确启用时，先读 skill 的 relay/worktree-return 参考、记录固定交付目标和批次，再执行其交接与返回核验要求。
-
-## 10. 最终完成条件
-
-当前按 v3 完成：固定 Windows/微信组合实测通过 G1/G2，最小配置与持久化可用，真实视频展示接收→模型→回复及明确限制，源码/依赖锁/启动文档/许可证齐备，交付排除凭据和私聊。无需完成原 18 阶段全部扩展；环境不足仍如实记录 blocked，不以模拟通道替代真实微信演示。
+Phase 1–5 与 Phase 7 的必需任务、G1/G2、工作台人工验收和真实视频齐备；Phase 6 仅对明确选择的项目验收。应用可从干净 Windows 源码包启动，复用基座作为内置依赖，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、离线截图、模型控制台或阶段文档不能作为最终完成。

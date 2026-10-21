@@ -1,5 +1,11 @@
 # 微信消息读取技术调研
 
+**当前选型（v4）**：最终应用已选定 wechatauto-replica 1.2.7.0，允许其数据库读取、取钥、UIA 热激活与 OCR。执行边界以 [主计划](wechat-agent-plan.md) 为准；以下原 Mac/无 OCR 目标及旧授权限制仅是历史研究背景，不再作为当前实施限制。
+
+选定快照为 `d322c4a9b1124228820bab363e5676016f188fc6`，核心读取、发送和控制源码齐全，Apache-2.0。已审阅 `db.py`、`guia.py`、`uia_driver.py`、`accessibility.py`、`wx.py`、`param.py` 和相关测试：消息从加密库/WAL 读取，默认发送为 UIA/坐标/OCR 混合；UIA 热激活通过运行时写 Qt accessibility 标志实现。读取需取钥，不能称作普通 UIA 或零侵入接口。未安装或验证 Windows 原生能力。
+
+集成重点为 Agent 与应用账本，并补已知并列 sort_seq、回调重试/水位、发送者编号、旧记录确认、WAL 新鲜度及秘密缓存问题，具体验收见主计划第 4/6 节。上游已有用户报告账号限制，原因未确定；不以低频轮询作免风险保证。参考：[固定源码](https://github.com/fanyuantaier/wechatauto-replica/tree/d322c4a9b1124228820bab363e5676016f188fc6)、[相关反馈](https://github.com/fanyuantaier/wechatauto-replica/issues/35)。
+
 调研日期：2026-10-21（Asia/Shanghai）。目标环境：macOS 27.0.1 / arm64 / 微信 4.1.5（31960）；最终读取不依赖 OCR。本文是候选研究，不改变主计划的阶段状态或授权边界，也不代表实机兼容验收。
 
 本轮通过 GitHub 搜索/文件/元数据接口和公开网页检索筛查十余个项目，实际查看 README、关键源码、当前仓库状态及许可。只读取公开资料，没有安装或执行候选取钥/解密/发送程序，没有读取私人聊天数据库。搜索引擎缓存的功能描述不能作为仓库当前可用的证据。

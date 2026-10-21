@@ -1,9 +1,10 @@
 # 复用登记
 
-更新：2026-10-21。下列 commit 是精确审阅快照，所有真实微信兼容性均 `not_tested`。研究用完整下载文件只存 Git 忽略的 `.local/research/`，应用不依赖该目录或上游完整项目。
+更新：2026-10-21。下列 commit 是精确审阅快照，所有真实微信兼容性均 `not_tested`。当前执行路线以主计划 v4 为准；研究下载只存忽略目录 `.local/research/`，计划中的正式基座将内置到 `third_party/wechatauto_replica/`，目前尚未导入。
 
 | 来源 | 精确版本/许可 | 审阅的文件/符号 | 采用方式与改动 | 验证范围 |
 | --- | --- | --- | --- | --- |
+| [wechatauto-replica](https://github.com/fanyuantaier/wechatauto-replica/tree/d322c4a9b1124228820bab363e5676016f188fc6) | `1.2.7.0` / `d322c4a9b1124228820bab363e5676016f188fc6` / Apache-2.0；PyPI wheel SHA256 `d29e6e38f183433796b51648c95af0bb2081449eb58332d431a18573d4fa6458` | `db.py`: WeChatDB/get_messages/get_new_messages/Listener/WAL；`guia.py`: send_msg/_verify_sent/ScreenOCR；`uia_driver.py`、`accessibility.py`、`param.py`、`wx.py`、相关自测 | **已选定，待内化**：Phase 1 保留独立上游包/许可/资源，以本地 path 依赖接应用适配器。允许取钥、UIA 运行时标志写入与 OCR；补并列游标、方向/发送水位、重试、新鲜度与隐私边界。实际补丁另记 UPSTREAM.md，当前未复制源码或执行原生操作 | 已审阅固定源码与测试文件，未执行上游测试，未验证 Windows 读取/发送；不得把上游实测声明记为本项目通过 |
 | [wxauto4 文档](https://docs.wxauto.org/docs/install.html) / [PyPI](https://pypi.org/project/wxauto4/41.1.7/) | 分发包 `41.1.7`；Python 3.12 x64 Windows wheel SHA256 `096a365ba71060c1af3c1f096342d5a16609452f51bcaf46e7359dd54235ebbf`；当前分发条款待安装核查，不假定沿用旧 wxauto 的许可 | 文档 `ChatInfo/GetAllMessage` 与 Message 的 `type/attr/id/content`；GitHub wxauto4 快照 `d0ae14d3e435807b4dead393af9d014529bbac78` 只有停止更新 README | 独立诊断依赖；`scripts/probes/windows_read.py` 自行编写 API 调用和目标核验，不复制或附带上游源码/二进制。15 个分发依赖及哈希见 `scripts/probes/windows-requirements.txt` | 在 Mac 仅解析 Windows 依赖与合成目标/方向测试；未安装原生包、未运行 Windows 微信，不标兼容 |
 | [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0.txt) | 标准许可原文，SPDX `PolyForm-Noncommercial-1.0.0` | 完整标准条款，保留原文；增加项目 Required Notice 行 | 用于本项目原创代码；第三方原有许可不受替换，详见 THIRD_PARTY_NOTICES | 构建时核对许可表达式与归档许可文件 |
 | [wechat-mac-rpa](https://github.com/wq19901103wq/wechat-mac-rpa/tree/0c129a5bb255a6640694c73fcdf178e7c3dda49b) | `0c129a5bb255a6640694c73fcdf178e7c3dda49b` / MIT，Copyright 2026 wechat-mac-rpa contributors | `src/action/message_sender.py`: `WeChatMessageSender._ensure_wechat_frontmost/_focus_input/_verify`；`src/layout/layout_parser.py`: `LayoutParser.parse/_detect_self_bubbles`；根 `LICENSE` | A 首先审阅。坐标输入、自动激活/重试、依赖主题的图像布局需要用户环境校准，初次审阅不移植发送/布局代码；AX 实测不可用后，改编 `src/ocr/vision_ocr.py` 的 Vision 请求/坐标转换至 `vision_diagnostic.py`，另审阅 `src/capture/window_capture.py`；只读 OCR 备选，不引入后台/Agent/视觉发送 | AX 实测后转向视觉可行性验证；已过合成图片的真实本地 Vision OCR，不代表微信读取或发送验收 |
@@ -16,4 +17,4 @@
 
 锁文件是应用和开发依赖精确安装版本来源，安装使用 `uv sync --locked`；Mac 原生依赖只通过 `--extra mac` 安装。uv 0.13.4 是本次离线执行工具，按工作区 `.local/tooling/` 安装，未修改全局 Python。执行 Python 3.12.14；不把具体开发机路径写入产品入口。
 
-最终适配器/profile 仍须 G1/G2 证据确认。AX 控件或方向不可靠时停止，最多按计划进行两轮证据修正后再讨论视觉备选，不同时启用两个发送器。
+旧 wxauto4/Mac 条目保留实际审阅与采用事实，不再作为当前基座候选继续安装。Replica 以主计划 G1/G2 证据确认支持组合；OCR 可用，但账号/方向/会话不确定时停发，不同时启用两个发送器。内化时保留上游 Apache-2.0，不将其原有许可替换为项目非商业许可。

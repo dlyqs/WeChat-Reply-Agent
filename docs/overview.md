@@ -1,56 +1,41 @@
 # 项目开发入口
 
-更新日期：2026-10-21（Asia/Shanghai）。阶段状态唯一来源为 [wechat-agent-plan.md](wechat-agent-plan.md)。
+更新日期：2026-10-21（Asia/Shanghai）。执行规格和阶段状态唯一来源为 [wechat-agent-plan.md](wechat-agent-plan.md)。
 
-## 当前现实
+## 当前路线与交付
 
-当前交付采用主计划 v3：固定 Windows 电脑、单一匹配微信版本、一个测试单聊、无 OCR 文本读取、10–30 秒轮询与校准后的键鼠发送。保留 G1/G2 的真实验证，取消多版本/macOS/实时性作为本轮前置；原 Phase 4–17 是扩展待办。当前自动范围仍为 Phase 1–3。
+v4 以 wechatauto-replica 1.2.7.0 / d322c4a9b1124228820bab363e5676016f188fc6 作为微信控制基座：Windows 固定环境、数据库消息读取、UIA/坐标/OCR 混合发送。允许基座的取钥与 Qt accessibility 运行时标志写入，OCR 默认启用；不再实施旧 wxauto4 或 Mac 无 OCR 选型。
 
-已准备独立 [Windows 只读诊断](windows-probe.md)、`scripts/probes/windows_read.py`、wxauto4 41.1.7 / Python 3.12 的 Windows 依赖锁和私有配置模板。候选微信 4.1.8.107 来自上游文档，Windows 实机尚未安装/验证，执行访问待建立。主包 CLI 仍是 Mac 研究原型，不能在 Windows 冒充已支持；探针不导入其 fcntl/Mac CLI。原创代码现采用根 LICENSE 的 PolyForm Noncommercial 1.0.0，第三方许可保留。
+内化方式为 third_party/wechatauto_replica/ 本地依赖，加 ReplicaAdapter/Bridge；微信底层来自上游，应用负责 Agent、inbox/outbox、配置/运行状态、知识/记忆和本地工作台。固定一个账号/测试单聊，默认 15 秒轮询，不要求多系统、多版本或长期无人值守。
 
-以下 Mac 事实和既有模块作为研究历史保留，与当前平台/验收范围冲突时以主计划 v3 为准。
+计划收敛为 7 阶段：1 基座/G1、2 Agent/G2、3 配置仓储与控制、4 API/工作台、5 知识记忆、6 可选工具附件、7 集成录像交付。现有自动范围仍为 1–3，实现暂停；本次仅计划修订，没有开始新阶段。Phase 1 仍 blocked，Windows 实机证据尚未回传。
 
-已建立 Python 包和 Phase 1 的 AX 通道候选（在当前微信实测不暴露消息控件），用户已要求最终不使用 OCR，目前停止视觉探针并研究无 OCR 接入，提供 doctor、probe read、probe send、56 项离线测试、依赖锁和构建产物。**Phase 1 因 G1 实机证据缺失而 blocked**；没有真实微信、模型或 UI 验收结论。尚无自动回复 worker、SQLite 仓储、模型客户端或前端。
+## 当前已经存在的产物
 
-用户已授权“请自动完成 phase1-3”，保存为 `auto_until` 1–3，relay off。必须依次通过 G1、G2；不跳过人工关口。Phase 2/3 等待依赖，本轮未实施。G1 的完整命令、记录方式和失败出口见 [README](../README.md) 与 [原型报告](prototype-report.md)。
+已有 Python 包、不可变事件/适配器契约、Settings、日志、FakeAdapter、MacAXAdapter、旧 CLI 和独立 wxauto4 读取探针；62 项合成 adapter/probe 测试通过，已有锁/构建验证。Mac 微信 4.1.5（31960）实测未暴露消息 AX 控件。上述都是旧路线产物与证据，不代表 Replica 已导入或验收。
 
-用户最新偏好：最终不要 OCR。窗口操控与消息读取分开核查；不以视觉 computer use 冒充结构化接口，也不擅自改用 Windows、数据库解密或 Hook。
+尚无 third_party 基座、本项目 ReplicaAdapter、模型/Agent、正式仓储/worker、API 或前端。当前 CLI 仍含 Mac/fcntl 依赖，不能直接在 Windows 充当最终应用。connect/prototype/serve 是新计划目标，尚不可执行。
 
-完整的公开项目筛查与源码发现见 [微信读取调研](wechat-reading-research.md)：Mac 无 OCR 的主要候选为 DB+WAL 读取；多条旧项目依赖链已失效。当前仅做公开资料审阅，尚未改变数据库/取钥边界或实机验证结果。
-
-用户指定的两项已进一步核查源码：WeChat-AI-AutoReply 是 Windows + OCR，不符合目标；im-mcp 有完整 Mac 取钥、解密和结构化消息读取实现，消息 UPSERT/ID 游标值得复用，但默认 30 分钟、最低 5 分钟的快照同步不适合直接做实时自动回复。已记录 WAL 有效性/一致性、密钥日志与索引重建游标缺口；将其列为读取层优先候选，未执行初始化或真实数据访问，也未解决发送。
-
-## 已有代码导航
-
-| 文件/目录 | 实际职责 |
+| 现有文件 | 当前职责/后续处理 |
 | --- | --- |
-| `src/wechat_reply_agent/cli.py` | doctor/probe；私有 JSON 原子输出、单探针锁、发送前预写回执，不开浏览器 |
-| `src/wechat_reply_agent/config.py` | Phase 1 最小 Settings；环境 > .env > 默认值，dry-run/空名单默认；Phase 3 再完整实现配置契约 |
-| `src/wechat_reply_agent/domain/messages.py` | ConversationRef/InboundEvent/SendIntent/SendResult/Capabilities/Health 不可变契约 |
-| `src/wechat_reply_agent/adapters/wechat/base.py` | WechatAdapter 协议、稳定脱敏 AdapterError |
-| `src/wechat_reply_agent/adapters/wechat/mac_ax.py` | 懒加载 NativeAX、截图方向采样、当前单聊唯一匹配与发送复核；待 G1 验证 |
-| `src/wechat_reply_agent/adapters/wechat/profile.py` | 用户本地账号/单聊绑定与重复字段校验；不会将昵称伪装成原生 wxid |
-| `src/wechat_reply_agent/adapters/wechat/fake.py` | 离线测试适配器；CLI 不能用 fake 冒充真实微信 |
-| `src/wechat_reply_agent/observability.py` | 结构化 JSON 边界日志，无正文/昵称/凭据 |
-| `src/wechat_reply_agent/adapters/wechat/vision_diagnostic.py`、`scripts/probes/vision_read.py` | 本机截图/OCR 可行性诊断，严格目标标题匹配；不判断发送方向、不发送、不是正式视觉适配器 |
-| `tests/adapter/` | 56 项合成桥、身份/发送守卫、配置、私有输出、故障和 CLI 测试 |
-| `examples/profiles/ax-candidate.json` | 待用户填写并确认的合成 profile 模板；默认未确认 |
-| `scripts/acceptance/phase1_report.py` | 私有 G1 报告初始化，不覆盖旧报告、不做桌面操作、不填写 passed |
-| `pyproject.toml`、`uv.lock`、`.env.example` | Python 依赖/CLI、精确锁、最小安全配置模板；mac 依赖单独 extra |
-| `docs/reuse-register.md`、`THIRD_PARTY_NOTICES.md` | 精确上游快照、采用符号/修改/边界与 MIT 声明 |
-| `.local/`（忽略） | 本地工具、私有 profile、收发证据、回执与报告，不能提交 |
-| `dist/`（忽略） | 当前开发 wheel/sdist，不是 Phase 18 的最终提交包 |
+| src/wechat_reply_agent/domain/、adapters/wechat/base.py | 消息/会话/发送契约与协议，继续复用并补数据库消息身份 |
+| config.py、observability.py、adapters/wechat/fake.py | 最小设置、脱敏日志和离线适配器，继续扩展 |
+| cli.py、adapters/wechat/mac_ax.py、profile.py | 旧 Mac 探针与绑定；平台代码隔离后保留历史能力 |
+| vision_diagnostic.py、scripts/probes/vision_read.py | 旧 OCR 可行性诊断，不作为 Replica 发送实现 |
+| scripts/probes/windows_read.py、windows-requirements.* | 旧 wxauto4 独立探针，归档参考，不再安装这套依赖 |
+| docs/windows-probe.md | 新 Replica Windows 接入/G1 操作顺序 |
+| docs/prototype-report.md、wechat-reading-research.md | 历史事实与公开源码调研，不覆盖新计划 |
+| docs/reuse-register.md、THIRD_PARTY_NOTICES.md、LICENSE | 来源、许可与拟内化基座登记 |
+| .local/、dist/ | 私有数据/证据与构建产物，Git 忽略 |
 
-未来模块（尚未存在）：Phase 2 `llm/runtime/routing/storage` 最小闭环；Phase 3 正式配置和身份仓储；后续 Agent/知识/记忆/附件/API/UI 按主计划依次落实。原型保留在正式包内继续扩展，不另建丢弃的系统。
+计划中的模块/目录以主计划第 3 节为准，不在入口文档重复维护另一张完成表。上游补丁优先处理并列 sort_seq、本人身份、发送水位/重试、WAL 新鲜度与秘密缓存边界。
 
-## 验证与定位
+## 续做与验证
 
-离线检查入口为 `uv run pytest tests/adapter -q`、`uv run ruff check src tests scripts`、`uv run ruff format --check src tests scripts`、`uv build`；无需微信和模型 Key。自动测试不调用真实桌面 API。用户更新分工后已执行真实只读 doctor：权限可用、桌面解锁、微信未运行；前台读取因 AX 控件缺失被拒绝，无消息正文读取或发送。新增本机 Vision 只读可行性探针，合成图片 OCR 已通过。
+续做先核对 Windows 工作区当前提交和真实结果，再按主计划 Phase 1 内化基座。安装/终端由助手执行，微信登录/界面/收件和录像由用户核对；已有 Windows 成果不能被此 Mac 工作区的未验证状态覆盖。
 
-身份失败先查 profile 的账号确认、唯一别名/完整标题和当前前台会话；读取失败查权限/AX 消息列表标题；方向由截图启发式决定，低置信/unknown 必须实测。发送前检查 dry-run、白名单、空草稿、输入焦点和再次会话匹配；按 Return 后仍是 unknown，必须核实收件。当前快照 occurrence 不是跨帧稳定 ID，没有自动去重/历史补收保证。
+现有离线入口为 uv run pytest tests/adapter -q、uv run ruff check src tests scripts、uv run ruff format --check src tests scripts、uv build。本次只修改文档，不重跑已通过的代码测试，也不新增 Windows 兼容结论。
 
-## 固定协作边界
+默认 dry-run、空白名单；模型不直接调用 GUI，所有发送经持久化 outbox。对端送达由用户核对，unknown 停发且不自动重试。第三方库日志、密钥/备份、解密快照和校准资源都纳入私有存储与脱敏边界。
 
-不自行拉起页面、浏览器、Playwright/CUA，不使用 GitNexus，不创建新会话、worktree、子 agent。用户已更新分工：安装和终端命令由助手执行，用户负责打开微信、手机登录、界面操作及真实效果核对。真实发送先明确测试会话和授权。G1/G2 的人工结果不可用 mock 代替。
-
-每次续做先读主计划和本入口。默认 dry-run、空白名单；真实发送只由用户显式命令启动。不得输出已有 `.env` 或私聊，公开只留脱敏摘要。每阶段代码/测试/人工结果/文档/本地 Conventional Commit 齐备才完成，不默认 push。Phase 11–14 前端只做静态/构建验证，视觉由用户验收。
+不自行打开网页、Playwright/CUA、GitNexus，不创建子 agent、新会话、worktree 或自动 relay。原创代码采用 PolyForm Noncommercial 1.0.0，基座保留 Apache-2.0，已有 MIT 改编声明保留。提交只记客观技术变更和验证结果，不默认 push。
