@@ -1,10 +1,53 @@
 # macOS DB 原型接入（Phase 5）
 
 2026-10-22。状态以 [执行计划](wechat-agent-plan.md) 为准。
-当前实现与离线验证已落盘；Mac G1/G2 未通过，Phase 6 未进入。
-更新工具后真实取钥、原版恢复和五条新消息读取已通过；固定发送已获得新增本人全文回读确认，等待对端收件确认，尚未运行 live Agent。
+当前实现与离线验证已落盘；严格 Mac G1/G2 未通过，Phase 6 未进入。
+本轮用户授权跳过 Mac 的截图/空草稿/全文核验，先以降级模式跑通流程。
+新版剪贴板自然对话固定发送及一次收件已确认，原有 LangGraph 实际完成两轮回复并逐条 DB 确认。
+用户接受当前轮数并要求标记通过：降级流程 passed，worker 已主动停止，未记录为三轮或自动上限停止。
+历史固定发送后曾出现安全退登；持久安全锁及 unknown 停发仍生效。
+
+窗口/输入/截图问题的后续检索见 [Mac 自动化调研](mac-automation-research.md)。
+独立窗及系统内容选择器已实测，当前组合仍只能取得黑画面或下层画面。
+官方独立窗置顶已验证，不能解决捕获。降级模式直接使用独立窗 AX 标题/焦点和 DB 确认。
+用户未找到隐藏主窗开关；`sharingState=0` 只作诊断线索，不能断言设置页一定存在对应开关。
 
 ## 已实现的边界
+
+### 本轮显式降级模式
+
+私有 Mac profile 新增以下字段，默认仍是 `main` / `visual`：
+
+~~~json
+{
+  "window_mode": "independent",
+  "send_preflight": "ax-window-db",
+  "window_width": 598,
+  "window_height": 640,
+  "composer_top": 0.775
+}
+~~~
+
+上述尺寸/输入位置是本机本轮记录，不是其他机器的通用坐标。独立窗必须唯一匹配绑定好友精确标题；
+运行前人工清空输入框。助手自动激活/AXRaise 目标窗，每次点击、粘贴和回车前核对 AX 焦点、
+进程、标题和几何。一次 Cmd+V、一次发送快捷键，随后独立 DB 水位/本人/会话/全文确认。
+不截图、不执行 OCR，**空草稿、粘贴全文和遮挡未核验**；报告明确 `ui_checks_degraded=true`。
+异常后仍遵循 unknown 不重试和持久安全锁，人工 resolve 不重发。
+
+仅该 profile 配合显式原型参数可运行流程验证：
+
+~~~sh
+uv run wechat-agent prototype --mode dry-run --duration 180 --max-replies 1 \
+  --allow-degraded-mac-ui --output .local/acceptance/mac/phase-5/degraded-agent-dry.json
+uv run wechat-agent prototype --mode live --duration 900 --max-replies 3 \
+  --allow-degraded-mac-ui --output .local/acceptance/mac/phase-5/degraded-agent-live.json
+~~~
+
+这不通过严格 G1/G2，也不开放 Mac serve。默认 `visual` 仍沿用原门禁和以下视觉检查。
+实际收发使用自然日常对话；首次监听建立基线，早于基线的来信不会触发回复。
+下文的 bootstrap、历史故障及严格视觉要求继续保留作参考。
+
+### 默认视觉模式
 
 `mac_db` 使用固定 Gist revision
 `c98dbb10cf23c30e83d5d744905101b0880887a0` 的 Reader/SQLCipher/Swift 基础。
@@ -30,6 +73,10 @@ macOS 27 的透明 Dock 可能被系统报告为整屏窗口；仅当其真实 A
 微信相交时排除透明区域，实际 Dock 遮挡、普通遮挡或未知布局仍拒绝。
 空草稿要求两张新画面通过原有严格检查，以等待光标闪烁和激活动画结束。
 发送前再次核对目标/草稿/焦点；仅按绑定的 enter 或 cmd-enter 一次。
+输入已参考固定 Windows 基座的 `uia_driver._paste_into` 和项目的 `send_text_once`：
+使用系统剪贴板一次 Cmd+V，随后精确回读草稿，代替逐段 CGEvent Unicode 输入。
+操作结束时恢复原剪贴板；检测到用户/其他应用已复制新内容时保留新内容。
+构建自检只使用独立命名剪贴板，不触碰用户剪贴板或微信。
 该限制尚不满足 Phase 6 的导航和完整文字能力对齐，不能宣称已支持 Mac 工作台。
 
 outbox_id 固定映射到应用原生回执及 Swift journal，均位于同一私有 DATA_DIR。
@@ -127,10 +174,38 @@ Mac gate 逐项核对平台、基座/revision、系统/微信版本、绑定和�
 不接受 Windows v4 passed 报告。
 
 自动抬高窗口的实际原生只读预检已通过，剪贴板计数不变。固定发送曾在输入前因遮挡
-或空草稿检查拒绝，回执均为 not_sent；这些记录不能充当真实发送或收件成功。
-连续帧已确认光标闪烁，后续失败帧又检测到真实未发送草稿；用户清空后自动抬高窗口、一次固定发送及新增本人全文回读已通过，等待对端收件确认，
-G1/G2 不据此放行。原生准备失败会返回已知脱敏原因码，
+或空草稿检查拒绝，回执均为 not_sent。用户清空后，自动抬高窗口、一次固定发送、
+新增本人全文回读及用户对端收件均已确认；随后实际出现安全退登，G1/G2 保持未通过。
+原生准备失败会返回已知脱敏原因码，
 激活/预检失败或超时不会进入输入与回车路径。可能已经发送后的异常仍为 unknown。
+
+## 账号安全事件与稳定性复验
+
+已观察到的英文提示为 `For account security, log in again.`。它不能区分临时副本登录、
+取钥、客户端状态、原生输入或其他服务端因素；目前没有确认根因，不承诺免退登/免封号。
+Windows 源码对照只证明输入路径差异，不构成 Mac 账号安全证明。
+
+原生 `session-check` 只读检查绑定进程的 AX 主窗和已知提示，不激活、截图或输入；
+窗口存在本身不等于登录认证成功。连接、轮询和发送前都使用该证据。已知提示在 AX
+可读取时，应用写入 `DATA_DIR/macos/security-stop.json` 并阻断后续连接/读取/live/
+bootstrap/原型 gate；未知弹窗/窗口仍按会话或遮挡不明停发，不猜测登录状态。
+用户报告的安全退登同样写入该锁。重启、人工 resolve 或旧 passed 报告不会解除。
+
+用户先通过原版客户端和手机正常登录，再显式记录人工恢复：
+
+~~~sh
+uv run wechat-agent mac-security-reset --confirm-manual-login \
+  --output .local/acceptance/mac/phase-5/manual-login-reset.json
+uv run python scripts/acceptance/mac_stability.py --duration 300 \
+  --output .local/acceptance/mac/phase-5/stability-readonly.json
+~~~
+
+reset 只归档停发证据，不登录/发送，也不改写失败 gate。复验复用已有密钥，只运行
+原版客户端；先做 5 分钟只读观察，再单次验证新粘贴路径并观察，最后才继续三轮 Agent。
+观察脚本不调用模型、不操作剪贴板、不输入，报告保留人工登录持续性待核对状态。
+新版通过 Swift 独立剪贴板自检和 Python 合成测试，真实发送/观察结果须独立记录。
+正常重登后的第一轮只读观察已完成（300.222 秒、20 次检查、无模型调用/输入事件），
+期间未记录到原生会话错误；新版真实粘贴发送与发送后观察仍待验证，不构成稳定性通过。
 
 原型仍使用同一 LangGraph、模型客户端和账本：
 
@@ -141,11 +216,26 @@ uv run wechat-agent prototype --mode live --duration 600 --max-replies 3 \
   --output .local/acceptance/mac/phase-5/prototype-live.json
 ~~~
 
-G1 未过不得运行；默认轮询 15 秒，发送至少间隔 30 秒、每分钟至多 2 次，
+默认视觉模式要求 G1；本轮显式降级模式的运行方式见上文。默认轮询 15 秒，发送至少间隔 30 秒、每分钟至多 2 次，
 单轮最多 3 条。三轮真实问答及上下文追问、逐轮对端收件后才可形成 G2。
 `serve` 的 Mac 接入属于 Phase 6，当前明确拒绝启动该未完成路径。
 
 ## 离线验证与私有资料
+
+本轮 191 项 Python 测试、Ruff、Swift 构建/自检和 wheel/sdist 构建通过。
+无屏幕录制权限时降级 health 可用；未明确选择降级 profile/CLI 参数时不能绕过严格 gate。
+窗口模式/降级状态进入私有绑定指纹、原生回执、发送及原型报告，Windows 路线保持原有要求。
+
+只读捕获对照可复现为（先人工将正确窗口放到前台；脚本不激活/输入/改 profile）：
+
+~~~sh
+uv run python scripts/acceptance/mac_capture_check.py --window-mode independent \
+  --backend display --output .local/acceptance/mac/phase-5/capture-display-new.json
+~~~
+
+后端可选 `display`、`window`、`stream`、`picker`。`picker` 需要用户在系统选择器中选择准确目标，
+保存约 2 秒无声 MP4 和原始帧。所有输出只允许私有 DATA_DIR，已有报告/帧不覆盖；
+黑画面、下层画面或不匹配的选窗不能通过。该诊断不修改验收 gate。
 
 `uv run pytest -q` 覆盖 Mac 身份/满批/事务、发送旧同文/多候选/异常/重启/人工处理、
 报告隔离和 Windows 原有回归。装好 SQLCipher 后额外运行真实合成加密 DB/WAL：

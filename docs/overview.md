@@ -1,6 +1,6 @@
 # 项目开发入口
 
-更新：2026-10-21（Asia/Shanghai）。阶段状态和验收条件唯一来源：[执行计划](wechat-agent-plan.md)。
+更新：2026-10-22（Asia/Shanghai）。阶段状态和验收条件唯一来源：[执行计划](wechat-agent-plan.md)。
 
 固定采用 wechatauto-replica 1.2.7.0 / d322c4a9b1124228820bab363e5676016f188fc6。
 完整依赖包和运行资源已内化到 third_party/wechatauto_replica/，通过 Windows extra 和 uv path source 安装。
@@ -40,8 +40,8 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
-本次用户授权 Phase 5–6；Mac G1/G2 通过后才进入 Phase 6，不进入 Phase 7–9。Windows Phase 4 工作台人工验收已由用户确认通过。
+本轮按用户最新授权先跑通 Phase 5 Mac 降级流程，严格 G1/G2 仍单独保留，不自动进入 Phase 6–9。Windows Phase 4 工作台人工验收已由用户确认通过。
 
 ## Mac Phase 5 status
 
-`mac_db.py`, `mac_bridge.py`, `mac_profile.py`, `mac_bootstrap.py` and `mac_acceptance.py` implement the Mac prototype, durable native receipts and platform gates. `scripts/build_mac_bridge.py` builds the private Swift helper; `scripts/acceptance/bind_mac.py` binds one native account/friend. 176 tests and the Swift self-test pass. Updated Apple developer tools resolved the LLDB crash; 19 database keys, original-client restoration, five fresh incoming messages and outgoing direction have been verified locally. Live sends now activate and raise only the bound main window, then run the existing target/draft/visibility checks. Fixed sending has a verified new exact self record, pending recipient confirmation; no Mac G1/G2 or Phase 6 completion is claimed. See [Mac setup](mac-probe.md).
+`mac_db.py`, `mac_bridge.py`, `mac_profile.py`, `mac_bootstrap.py` and `mac_acceptance.py` implement the Mac prototype, durable native receipts and platform gates. `WindowCapture.swift` provides bounded capture/picker diagnostics; `DegradedSend.swift` adds the explicitly selected AX independent-window path without screenshots. `scripts/build_mac_bridge.py` builds all four Swift sources; `scripts/acceptance/mac_capture_check.py` records private comparison evidence without input. 191 tests, Swift self-tests and wheel/sdist builds pass. Existing keys and original-client reads were reverified. Independent-window capture remains unavailable, including the system picker; the user authorized skipping visual draft/occlusion checks. The degraded clipboard fixed send and one recipient receipt passed; the shared LangGraph/ledger completed two real natural-conversation replies, accepted by the user. The degraded flow is passed and its worker is stopped. Strict G1/G2 remain unpassed and Mac serve is unavailable. See [Mac setup](mac-probe.md).

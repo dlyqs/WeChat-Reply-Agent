@@ -4,21 +4,23 @@
 本文件是阶段状态、实施顺序和完成条件的唯一来源；代码导航见 [overview.md](overview.md)。
 
 ~~~text
-execution mode: execute_phases_5_6
+execution mode: execute_phase_5_degraded_flow
 automatic start phase: 5
-automatic stop phase: 6 (requires phase 5 G1/G2)
-execution state: phase_5_fixed_send_verified_awaiting_recipient_confirmation
+automatic stop phase: 5 (degraded flow validation; strict G1/G2 remain separate)
+execution state: phase_5_degraded_flow_passed_worker_stopped
 conversation relay: off
-current change: native keys and freshness verified; automatic window activation implemented
-last completed implementation scope: phase 1-4 on Windows
-next implementation phase: 5 (recipient confirmation, model dry-run and three live rounds)
+current change: explicit AX independent-window + clipboard + DB confirmation; visual preflight waived by user
+last completed implementation scope: Windows phases 1-4; Mac phase 5 user-authorized degraded flow
+next implementation phase: none automatic; Phase 6 remains pending
 windows foundation: wechatauto-replica 1.2.7.0
 windows upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 macOS reference: acmerfight/0a01249ef72970d07a2603dbb629e80f
 macOS reference revision: c98dbb10cf23c30e83d5d744905101b0880887a0
 ~~~
 
-v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。本次用户已明确授权 Phase 5–6，Phase 5 软件和合成验证已实施；更新开发工具后真实取钥和新消息读取已通过，固定发送仍在验收，Phase 6 未进入。具体完成事实见各阶段记录。
+本轮执行以 [Phase 5 本轮范围调整](#phase-5-本轮范围调整2026-10-22) 为准。旧交接清单及严格验收条件保留，不能用降级流程结果改写严格 G1/G2；不自动进入 Phase 6。
+
+v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。本轮按用户最新授权完成 Phase 5 降级流程：既有密钥/读取复验、自然固定发送与一次收件、两轮真实 Agent 回复及 DB 确认均通过；用户接受实际轮数并要求标记通过。严格视觉 G1/G2 仍未完成，Phase 6 未进入。
 
 ## 1. 交付目标与范围
 
@@ -224,13 +226,13 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | Phase 2 | 最小 Agent 闭环 | 必需 | completed | LangGraph/SQLite 原型与 DeepSeek 三轮 G2 通过；达到 3 条上限后已停发 |
 | Phase 3 | 配置、持久化与运行控制 | 必需 | completed | 配置/迁移/单线程运行控制、故障回放及 Windows 干净目录锁安装通过 |
 | Phase 4 | 本地 API 与工作台 | 必需 | completed | API/React 工作台/serve、自动检查及用户确认的界面/真实微信状态同步验收通过 |
-| Phase 5 | macOS 固定收发与最小 Agent 原型 | 必需，新增 | in_progress | 原型实现与 166 项测试通过；更新后 SDK 27 / LLDB 2103 合成捕获通过，继续真实取钥，G1/G2 未过 |
+| Phase 5 | macOS 固定收发与最小 Agent 原型 | 必需，新增 | completed_degraded | 191 项测试及 Swift 自检通过；固定自然对话一次收件、真实模型两轮及 DB 确认通过，用户接受实际轮数并要求标通过；worker 已停止，严格 G1/G2 未过 |
 | Phase 6 | macOS 与 Windows 已有应用功能对齐 | 必需，新增 | pending | Phase 5 Mac G1/G2；完成正式服务/发送/工作台接入及 Windows 回归 |
 | Phase 7 | 知识检索与长期记忆 | 必需，原 Phase 5 | pending | Phase 6；在两平台共用的 Agent/API 上扩展 |
 | Phase 8 | 业务工具、文件与语音入口 | 可选，未选择，原 Phase 6 | pending | Phase 7；未选择则记录不纳入并转 Phase 9 |
 | Phase 9 | 双平台集成回归、录像与交付 | 必需，原 Phase 7 | pending | Phase 6/7，以及已选择的 Phase 8 项 |
 
-本次已授权 Phase 5–6，Phase 5 已开始；Phase 7–9 未授权实施。Mac G1 未通过不得运行 live Agent，G2 未通过不得进入 Phase 6。Mac 原型被阻塞时记录原因和证据，保留 Windows completed 状态，不把未完成 Mac 支持默认为可选或已通过。
+原授权为 Phase 5–6；本轮用户将目标调整为 Phase 5 降级流程跑通，暂不考虑最终完成度。默认原型仍要求 G1；只有显式降级 profile 与 `--allow-degraded-mac-ui` 同时启用时，允许流程验证绕开严格视觉 G1。此例外不放行 Phase 6，不改变 Windows，也不授权 Phase 7–9。
 
 ### Phase 1：内化微信控制基座并通过 G1
 
@@ -331,7 +333,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - [x] 固定 Gist revision、核对 MIT 和必要源码/资源，记录来源与本地补丁；将 Reader 的 Zstandard 接入主项目支持的 Python，声明 SQLCipher/Swift/LLDB 依赖并先用合成数据验证。
 - [x] 实现只读 doctor 和显式原生账号/好友绑定。复验已有密钥；确需首次捕获时执行受控临时副本 bootstrap，记录原版签名/路径、选定账号、超时、退出与恢复结果，密钥只落私有目录。
 - [x] 实现 Mac 数据库读取、发送者/方向解析、消息身份和增量游标；启动建基线，读取结果与 inbox/游标事务提交后才推进消费确认；满批、坏库、旧快照和账号/源库变化有明确失败状态。
-- [ ] 实现人工预选单聊的原生发送桥；按用户要求，live 前自动激活绑定进程并抬高主窗（非永久悬浮置顶），再核验遮挡/焦点。先 dry-run 再一次显式固定发送。原型允许短单行文本（先以不超过 200 字验证），输入前和发送前检查目标、空草稿、主窗/焦点和全文；发送快捷键事先配置，一次操作只尝试一次。
+- [ ] 完成人工预选单聊的原生发送桥。当前已支持 live 前激活绑定进程、AXRaise 抬高主窗；下一步优先验证并适配微信独立聊天窗的官方置顶能力，自动准备目标窗口后核验遮挡/焦点。主窗与独立窗分别绑定和校准，不能沿用另一布局的坐标。先 dry-run 再一次显式固定发送。原型允许短单行文本（先以不超过 200 字验证），输入前和发送前检查目标、空草稿、目标窗口/焦点和全文；发送快捷键事先配置，一次操作只尝试一次。
 - [ ] 以 outbox_id 驱动原生操作 ID，发送前保存数据库水位，发送后核对同会话新增本人记录和完整正文；返回应用三态，不把上游 already_sent/UI 成功直接映射为 verified_sent。异常/超时可能已发则 unknown，禁止换 ID 重试。
 - [x] 提取 Prototype 所需的连接、账号代数、联系人与身份契约，扩展 CLI 工厂和原型 G1 检查以识别 mac_db；保留 Windows 现有入口、ID 和报告兼容，公共层改动先跑 Windows 合成回归，不另写一套模型循环。
 - [ ] Mac G1 通过后，用原有 LangGraph/CompatibleModel/账本执行有界 dry-run/live，沿用默认 15 秒轮询、至少 30 秒发送间隔、每分钟至多 2 次、最多 3 条；超长/原型不支持的输出拒发，不静默截断。
@@ -344,12 +346,91 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 - P05-03：测试好友发 5 条文本，含连续同文；另核对本人消息。消息数量、内容、顺序和方向逐条正确，重读不重复入库，未知身份/方向及非白名单不触发模型。
 - P05-04：dry-run 不写草稿/剪贴板或注入事件；一次固定 live 在目标会话出现新的本人完整文本记录，用户确认对端收件。错标题/已有草稿/失焦/窗口遮挡等拒绝；原生无法确认的条件不得猜发，反例证据标明合成或实机。
 - P05-05：旧同文、多条匹配、按键后异常、回读超时、桥进程退出或崩溃均不误报成功；同 outbox_id 不二次发送，重启保留 unknown；resolve 不操作微信。
-- P05-06：P05-01–05 的必需项和人工收件核实后，Mac G1 passed。随后 dry-run 正确，再真实完成至少 3 轮 LLM 问答，含上下文追问；本人消息不自循环，达到上限后停发，用户逐轮确认收件，Mac G2 passed。
+- P05-06：P05-01–05 的必需项、实际退登后新增的 P05-08 和人工收件核实后，Mac G1 passed。随后 dry-run 正确，再真实完成至少 3 轮 LLM 问答，含上下文追问；本人消息不自循环，达到上限后停发，用户逐轮确认收件，Mac G2 passed。
 - P05-07：分别记录轮询/模型/发送/回读耗时和原型能力限制；不将仅 UI 核验、人工补发或人工调整后的结果记成无人介入成功。原型限制不能反向缩小 Windows 配置或功能。
+- P05-08（实际退登后的回归）：复用已有密钥、仅原版客户端，完成 5 分钟只读观察、新版单次粘贴发送及观察，再继续 G2。已知安全提示持久停发，人工重登/显式 reset 仅解除锁、不改写 gate。记录有限观察窗口，不能据此宣称免退登或免封号。
 
 完成条件与证据：Mac G1/G2 均通过，报告写入 `.local/acceptance/mac/phase-5/{g1,g2,report}.json`，含 `plan_version=v5`、`platform=macOS`、`foundation=mac_db`、Gist revision、准确环境和本机绑定指纹。未通过对应项为 failed/not_tested，并说明阻塞。取钥/可靠发送失败时留在本阶段，不进入 Phase 6，也不重试已经可能发送的操作。
 
-完成记录（2026-10-22，未完成）：固定 Gist/MIT/哈希内化、只读 SQLCipher DB/WAL、事务游标、独立绑定/bootstrap、Swift 桥、原生 outbox 幂等/三态及 Mac 原型 gate 已实现。176 项 pytest、Swift 编译/自检、合成加密库及工具链捕获检查通过。实际为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115，App Store）。SDK 27.0 / LLDB 2103 / Swift 6.4 解决旧 LLDB 1703 崩溃；受控临时副本取得 19/19 个 HMAC 有效密钥，原版哈希/签名保持、恢复并读到新消息。五条来信（含连续同文）、一条本人消息及空格、顺序、方向均已核对，重读不重复入库。新增 live 前自动激活/抬高绑定主窗、尺寸校验、标题 OCR 精确复核及透明 Dock 面板判定；实际原生只读预检通过。固定发送前的空草稿/遮挡拒绝均为 not_sent；已处理光标闪烁，真实草稿经用户清空后，自动抬高窗口、一次固定发送和新增本人全文回读已通过（verified_sent/local_db_confirmed），等待对端收件确认。P05-01/02/03/05 有对应合成或实机证据，P05-04 本机固定发送通过、对端收件待确认，G1/G2 未通过，P05-06/07 未完成，Phase 6 未进入。私有证据见 `.local/acceptance/mac/phase-5/`；Windows 原有报告未改写。
+#### Phase 5 本轮范围调整（2026-10-22）
+
+用户在本轮明确允许 Mac 降级或跳过这些界面检查，先完成流程，不以最终完成度为目标；并要求后续实际收发使用类似真人日常对话的内容。此授权覆盖下述显式模式，严格验收记录继续保留。
+
+- `window_mode=independent`、`send_preflight=ax-window-db`：绑定唯一好友独立窗口，按 AX 精确标题/尺寸、前台及焦点复核，使用配置的输入位置，一次 Cmd+V、一次发送快捷键。独立窗布局单独记录；不启用截图/OCR，不核验空草稿、输入全文或遮挡，报告明确 `ui_checks_degraded=true`。
+- 仍保留原版进程/账号/库身份、白名单、文本长度、outbox 操作 ID、单次发送、水位之后唯一的同会话本人完整文本记录确认、unknown 停发及账号安全锁。数据库全文确认只能说明发送结果，不能补足发送前草稿检查。
+- 默认仍为 visual；降级 profile 不能通过严格 `require_gate`。流程验证额外要求 `prototype --allow-degraded-mac-ui`，复用现有 LangGraph、模型客户端和账本；不写另一套循环，不把 G1/G2 改为 passed，不接 Mac serve。
+- 本机复验原版/已有密钥成功。用户打开的独立窗为 598×640，AX 只有三个窗口按钮，没有编辑框。显示器截图为下层画面、单窗截图无有效帧、单窗流及系统选择器流为黑画面；系统选择器选中正确窗口，2.477 秒 MP4 解码仍为黑画面（RGB 最大值 2）。官方置顶已实测（勾选且层级 3），仍不可捕获，诊断后恢复未置顶。截图路线未通过。
+- 降级原生 dry-run 已通过，剪贴板未改、输入事件为 0。一次自然聊天固定发送经新本人全文 DB 记录确认；用户确认只收到一次且仍登录。只读模型回放使用用户明确指出的真实来信，生成 23 字回复且未发送；它标为显式回放，不算新消息自动轮次。首次 180 秒监听因来信在启动基线前到达，没有调用模型，报告如实保留。
+- 真实 live 使用 15 秒轮询、至少 30 秒发送间隔，实际完成两轮模型回复，每条均由唯一新增本人完整文本记录确认；本人消息被过滤，没有自循环。用户确认“测试成功”并要求标记通过，接受当前轮数；收到确认后主动停止 worker，未达到三条上限，不能记录为三轮或自动上限停机。降级流程 `passed`，严格 P05-04/08 稳定性与 G1/G2 仍未通过，不自动进入 Phase 6。
+
+证据入口：`.local/acceptance/mac/phase-5/{degraded-flow,report}.json`（降级流程 passed），`g1.json/g2.json`（严格状态保留），`degraded-{preflight-recheck,fixed-send,agent-dry,agent-dry-replay,agent-live}.json`，以及 `native-ui/independent-*`。诊断复现脚本 `scripts/acceptance/mac_capture_check.py`；窗口/输入降级代码 `WindowCapture.swift`、`DegradedSend.swift`。私有 profile 保留原账号代数，独立窗模式和降级状态进入绑定指纹与报告；旧绑定已归档，不重取密钥。 实现提交 `f5a5156`；191 项测试、Ruff、Swift 自检及 wheel/sdist 检查通过，源码包包含四个原生源文件且不含私有运行材料。
+
+历史严格验收记录（2026-10-22，本轮范围调整前，未完成）：固定 Gist/MIT/哈希内化、只读 SQLCipher DB/WAL、事务游标、独立绑定/bootstrap、Swift 桥、原生 outbox 幂等/三态及 Mac 原型 gate 已实现。176 项 pytest、Swift 编译/自检、合成加密库及工具链捕获检查通过。实际为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115，App Store）。SDK 27.0 / LLDB 2103 / Swift 6.4 解决旧 LLDB 1703 崩溃；受控临时副本取得 19/19 个 HMAC 有效密钥，原版哈希/签名保持、恢复并读到新消息。五条来信（含连续同文）、一条本人消息及空格、顺序、方向均已核对，重读不重复入库。新增 live 前自动激活/抬高绑定主窗、尺寸校验、标题 OCR 精确复核及透明 Dock 面板判定；实际原生只读预检通过。固定发送前的空草稿/遮挡拒绝均为 not_sent；已处理光标闪烁，真实草稿经用户清空后，自动抬高窗口、一次固定发送和新增本人全文回读已通过（verified_sent/local_db_confirmed），对端收件已由用户确认，随后发生账号安全退登。已参考 Windows 输入路径改为一次剪贴板粘贴，增加 AX 会话预检和持久停发锁；用户正常重登后的 5 分钟只读观察已完成，未自动重新取钥；新版真实粘贴与发送后观察尚未完成。P05-01/02/03/05 有对应合成或实机证据，P05-04 固定发送和收件通过但安全退登仍阻断 G1；P05-08 新输入路径/稳定性复验未完成，G1/G2 未通过，P05-06/07 未完成，Phase 6 未进入。私有证据见 `.local/acceptance/mac/phase-5/`；Windows 原有报告未改写。
+
+后续记录（2026-10-22）：正常重登后的 300.222 秒只读观察已完成（20 次检查，模型调用/输入事件均为 0，未记录到原生会话错误）。新版粘贴路径尚未实际输入，被截图预检拒绝；主窗口缺失/截到下层画面，用户未找到隐藏主窗开关。按用户要求先集中调研，结果见 [Mac 自动化调研](mac-automation-research.md)。官方独立聊天窗置顶功能作为下一候选，截图可用性和桥适配尚未验证；不据此改写 G1/G2。当前暂缓真实发送测试，Phase 6 仍未进入。
+
+#### Phase 5 续做清单（2026-10-22 交接）
+
+用户将新开对话验证可行性并完成本阶段。新的执行者先核对当前工作区和私有证据，再按本节推进；既有 Phase 5–6 授权继续有效，Phase 6 仍以 Mac G1/G2 为前置条件。原生窗口操作和已限定的单好友测试在原任务范围内；新对话先确认本机实际登录、目标窗口和草稿状态，不把本次旧进程号或“原版已登录”的历史回复当成当前状态。
+
+**已有事实与当前阻塞**
+
+| 项目 | 截至交接的事实 | 续做要求 |
+| --- | --- | --- |
+| 工作区 | 当前分支 `dev`；最近提交 `a703707`；其后剪贴板、停发锁、AX 会话检查、捕获实验和文档仍有未提交修改 | 先查 `git status`/diff；保留已有改动和回执，不 reset 工作区、不只看 HEAD 判断功能 |
+| 环境 | 上次实测 macOS 27.0.1 / arm64 / App Store 微信 4.1.15（270115），SDK 27 / LLDB 2103 / Swift 6.4 | 重新核对实际版本、原版路径/签名、进程及账号绑定；变化需要重新验证 |
+| 取钥与读取 | 19/19 密钥 HMAC 验证通过；原版恢复，五条来信含连续同文及本人消息、顺序/方向/空格与去重已核对 | 优先复用有效密钥和只读 DB/WAL，不重复临时副本登录或取钥流程 |
+| 旧固定发送 | `send-live-after-draft-cleared.json`：一次发送、新增本人全文回读及对端收件成功，随后出现账号安全重登提示 | 保留历史成功与安全事件；旧 Unicode 路径的成功不能放行新剪贴板/独立窗路径 |
+| 当前输入 | 一次 Cmd+V、全文核验、一次 Enter、剪贴板所有权恢复已实现；独立命名剪贴板自检通过 | 新版真实粘贴尚未执行，不能写成已验证；不用逐字 Unicode 输入作为默认路线 |
+| 新版失败 | `send-live-clipboard-v1.json` 明确 `not_sent`，在输入前因无帧被拒绝；后续只读预检又出现截到下层画面/标题不匹配 | 不重发旧 outbox；只有原操作明确未发送时，才可创建下一次独立测试；unknown 始终停发 |
+| 截图与控件 | 主窗 sharing state 为 0；主窗截图失败/画面缺失；AX 只有窗口外壳；用户找不到隐藏主窗设置 | 不再反复要求寻找同一开关；不把该标记单独当成所有捕获方式都不可用的证明 |
+| 安全恢复 | 用户已正常重登，停发锁曾显式 reset，旧事件归档；随后只读观察 300.222 秒、20 次检查、无模型或输入事件 | 新对话重新核对当前锁/登录状态。仅在用户确已正常登录后显式 reset；reset 不改 gate，不登录、不发送 |
+| 阶段门禁 | `g1.json/g2.json/report.json` 仍未通过；当前要求 `input_method=clipboard-v1` 和 `native_stability_verified=true`，另核对版本/绑定/源库 | 独立窗模式/校准的变化也要进入可核对的验收上下文；不能用旧主窗证据或直接编辑 passed 绕过验证 |
+
+**参考索引与适用边界**
+
+| 参考 | 已确认的内容 | 待验证/不能推导的结论 |
+| --- | --- | --- |
+| [微信官方 Mac 4.0.5 更新](https://weixin.qq.com/updates/mac/405) | 独立聊天窗口支持置顶；存在默认隐藏主窗截图功能 | 当前 4.1.15 的置顶入口、状态读取、自动操作及独立窗截图仍要实测 |
+| [Windows Replica 固定版本](https://github.com/fanyuantaier/wechatauto-replica/tree/d322c4a9b1124228820bab363e5676016f188fc6) | `guia.bring_to_front` 的窗口准备、`uia_driver._paste_into` 的点击/剪贴板输入可参考 | 本项目 `send_text_once` 是本地补丁，见 `third_party/wechatauto_replica/UPSTREAM.md`；不能复制上游宽松重试代替它，也不能推导免退登 |
+| [Apple activate](https://developer.apple.com/documentation/appkit/nsrunningapplication/activate(options:)) / [AXRaise](https://developer.apple.com/documentation/applicationservices/kaxraiseaction) | 系统支持激活和抬高窗口；当前主窗路径已实测 | 抬高不等同持续置顶；独立窗优先使用微信自己的置顶入口 |
+| [wxauto-mcp-mac 源码](https://github.com/S7arFish/wxauto-mcp-mac/blob/9538325b3929a6c19d08889df920e9ba48352129/src/wxauto_mcp/server.py) | 激活、frontmost、找输入框、Cmd+V 和回车已有实现 | 部分定位失败未严格处理，按回车后直接报成功；仅参考输入，不采用其成功判断/默认首个搜索结果 |
+| [wechat-controller 键盘源码](https://github.com/dragonking-T/wechat-controller/blob/47b6191d0af5488687f9617ab67c256804e64988/wechat_controller/input/keyboard.py) / [macos-wechat-sender](https://github.com/yunkai/macos-wechat-sender/blob/main/scripts/send_wechat.py) | NSPasteboard/pyperclip 配合标准系统按键发送中文 | 可比较 Cmd+V/Return 的投递方式；不默认安装项目，不照搬清窗或连续回车流程 |
+| [AXValue 输入源码](https://github.com/tonyshield/send-wechat-message/blob/6a649af51bf3acaa6f574008ed38ef235c490dce/scripts/focus_composer_and_set_value.sh) | 作者报告粘贴偶尔不响应时可写 AXTextArea 的 AXValue | 只有实际找到唯一可写输入框并确认焦点才可评估，本机 AX 树缺失时不成立；不能清空用户草稿或发送后切换输入路径 |
+| [FastBridge issue #1](https://github.com/huj28-creator/wechat-fastbridge/issues/1) | 多个 4.1.x 版本出现 AX 只剩窗口按钮，权限/VoiceOver/增强属性未解决 | 相同现象的公开报告，不是本机构建兼容性结论；不继续猜旧 AX 标识 |
+| [Apple SharingType.none 文档](https://developer.apple.com/documentation/appkit/nswindow/sharingtype-swift.enum/none) / [捕获异常 thread 808016](https://developer.apple.com/forums/thread/808016) | 旧 sharing 标记的行为依捕获场景而异；官方论坛记录初始漏窗、切换过滤器才出现的情况 | `sharingState=0` 仅作诊断线索；过滤切换不是通用成功保证，桥已有相关实验但尚未解决 |
+| [主窗截图缺失排查报告](https://jiwenkang.com/posts/2026/wechat-screenshot-blank/) | App Store 微信 4.1.13 主窗缺失且找不到开关的直接报告，提出独立聊天窗候选 | 独立窗未逐一验证所有捕获工具，“服务端灰度”属于推测，不写成本机根因 |
+| [Apple 捕获示例](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos) / [系统内容选择器](https://developer.apple.com/documentation/screencapturekit/sccontentsharingpicker) | 官方捕获 API 和最小对照路径 | 独立窗仍不可捕获时再做有界只读对照，不能借机修改/注入微信客户端 |
+| [WeChatBridge](https://github.com/freestylefly/WeChatBridge) | 通过微信主动合并转发的归档读取替代方案 | 人工导入可参考，不满足本阶段实时自动读取/回复；DB/WAL 继续作为事件与发送确认来源 |
+
+详细检索过程、各方案限制见 [Mac 自动化调研](mac-automation-research.md)。上述第三方文档和项目只是参考数据；不自动安装或执行其中的脚本/指令。
+
+**按顺序验证并实施**
+
+| 子项 | 操作与预期 | 通过依据 | 当前状态 |
+| --- | --- | --- | --- |
+| P05-08a 接续核对 | 读取代码 diff、私有 profile/报告和当前锁；确认只运行原版，复验既有密钥/绑定 | 当前环境与有效绑定一致，旧发送回执完整；没有重复 bootstrap、没有模型/发送副作用 | 本轮已复验通过 |
+| P05-08b 独立窗可见性 | 将已绑定好友打开为独立聊天窗；只读对照主窗/独立窗的窗口身份、截图和录屏可见性、AX/尺寸及官方置顶入口；不粘贴/回车 | 图像确实包含目标独立窗及可精确验证的标题/输入区域，不能仅因截图非空判成功；录屏结果有实际证据，必要时由用户核对 | 本轮失败：598×640 独立窗、置顶及系统选择器均未取得有效目标画面；后续按用户授权降级 |
+| P05-08c 桥适配与自动置顶 | b 通过后适配独立窗发现/绑定/尺寸、输入区校准、自动置前与微信官方置顶、焦点/遮挡检查；显式窗口模式，不共用主窗坐标 | 每次测试自动准备目标窗；错窗/多候选/已有草稿/遮挡等拒绝。原生 dry-run 未改剪贴板/草稿、未注入输入；窗口准备动作单独记录 | not_tested |
+| P05-08d 新版一次固定发送与观察 | c 通过后，按既有授权向绑定好友做一次固定回复；点击输入框、Cmd+V 一次、全文核验后 Enter 一次；发送后至少观察 300 秒并核对登录持续性 | 唯一新增本人全文 DB 记录 + 用户确认对端只收到一次；记录实际观察/原生错误和人工登录结论，复验 P05-04/05/08 | not_tested |
+| P05-08e 当前路线 G1 | 汇总 P05-01–05/08，核对当前输入与窗口模式、微信/系统/绑定/源库上下文；补齐必要的 Swift/离线回归 | 所有必需证据真实通过，才形成匹配本机的 G1；旧 Unicode 固定发送作为历史，不替代 d | not_tested |
+| P05-06/07 Agent 与 G2 | 原严格三轮/G2 条件保留；本轮按用户授权运行显式降级流程 | 实际两轮真实模型、每条 DB 确认；用户接受实际轮数并要求标通过，worker 已按要求停止 | 降级流程 passed；严格 G2 仍 not_tested |
+
+若 b 失败：保留证据，使用 Apple 示例/内容选择器对同一已绑定窗口做有界只读对照，核对捕获生命周期、过滤器、窗口几何和图像身份；将结论写回本表。不要无限重启捕获、降低标题/空稿核验或猜测点击。若实际出现可用的唯一 AX 编辑框，可按参考评估 AXValue；没有控件就明确记为不支持该路径。候选路线失败不等于原任务取消，也不得标阶段通过。
+
+发送后或可能已输入/发送时出现异常：遵循当前 outbox 三态与停发锁；unknown 不换 ID 重试，不在回车后切换 AppleScript/CGEvent/点击 send 等另一条发送路径。安全重登提示的根因尚未确认，完成有限观察也不承诺免退登/免封号。
+
+**代码与私有证据入口**
+
+- 原生：`third_party/wechat_mac_toolkit/{WeChatUI.swift,Send.swift,UPSTREAM.md}`；当前捕获代码含探索性分支，先审阅并收敛，不直接将其当成稳定实现；`capture_ready` 的后端标签也需与实际后端一致。
+- 应用：`src/wechat_reply_agent/adapters/wechat/{mac_bridge.py,mac_db.py,mac_profile.py,mac_security.py,mac_acceptance.py}`、`cli.py`；原型复用既有实现，不另写模型循环。
+- 构建与观察：`scripts/build_mac_bridge.py`、`scripts/acceptance/mac_stability.py`；依赖优先使用现有 `.venv`/uv，按改动执行 Python 检查、Swift 编译/独立剪贴板自检和构建检查。历史通过次数不替代新改动的验证。
+- 绑定/密钥：`.local/macos/profile.json`、`.local/macos/bootstrap-20261021-lldb2103/keys.json`；目标好友 alias/微信号以该私有绑定与用户原授权核对。PID/window ID 每次新发现，不复用历史值。
+- 模型：项目忽略的 `.env` 已有用户授权保存的 DeepSeek 配置，默认发送模式 dry-run；不打印密钥，不把配置或聊天内容抄进计划，不因新对话再次索要同一密钥。
+- 验收：`.local/acceptance/mac/phase-5/{g1.json,g2.json,report.json,read-freshness.json,stability-readonly.json,send-live-after-draft-cleared.json,send-live-clipboard-v1.json}` 及 `native-ui/`；旧 `*-before-native-recovery.json` 保留为历史，不覆盖当前事实。
+- 私有 `preflight_check.py` 只作当前主窗路径的辅助参考；新独立窗模式未实现前不能直接用于宣称通过。真实测试使用新输出文件，保留失败/unknown 历史。
+
+上述 `.local`、`.env` 不进公开交付。此处仅提供位置和状态，不记录聊天正文、账号目录、密钥或新一轮 passed。用户当前要求是保存交接计划，本对话到文档更新为止，不主动启动测试、模型或新会话。
 
 ### Phase 6：macOS 与 Windows 已有应用功能对齐
 
@@ -468,7 +549,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 ## 8. 续做与旧版本衔接
 
 1. 下一次先读本计划和 overview，再核对对应平台接入说明、提交、私有报告与实际环境。overview/README 中尚未随实施更新的 Windows-only 描述是代码现状，不代表本计划新增 Mac 阶段已完成。
-2. 下一实施入口为 Phase 5：参考固定 Gist 的数据库/原生界面路线；不安装旧 wxauto4，不继续猜旧 Mac AX 消息控件标识。旧 AX/视觉文件仅复用经核对的必要逻辑与测试。
+2. 下一入口以 Phase 5「本轮范围调整」及其实际结果为准。独立窗和 Apple 系统选择器均已实测黑屏；当前按用户授权验证显式降级流程，不重复无依据的捕获重试。要恢复严格验收，仍需可核验输入界面及对应稳定性证据；不安装旧 wxauto4、不猜旧 AX 消息控件、不重复取钥。
 3. Windows Phase 1–4/G1/G2/人工验收保持 completed；Mac G1/G2 在 Phase 5 独立形成。Phase 5 原型先受对应 G1 检查控制；Phase 6 正式服务仅在本机匹配的 G1/G2 有效后开始，不能借用另一平台报告。
 4. 编号映射：v4 Phase 1–4 不变；v4 Phase 5（知识记忆）→v5 Phase 7，v4 Phase 6（可选增强）→v5 Phase 8，v4 Phase 7（交付）→v5 Phase 9。更早的 18 阶段已在 v4 收敛；按主题继续映射到本版，不恢复旧执行顺序。
 5. 新增用例使用 P05/P06；原尚未实施的知识/增强/交付用例顺延为 P07/P08/P09。任何既存旧编号/报告保留原 plan_version、日期与含义，用「版本+平台+阶段+用例」识别，不覆盖或改写旧测试结果。
@@ -480,4 +561,4 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 Phase 1–7 与 Phase 9 的必需任务、Windows 和 Mac 各自的 G1/G2、Phase 6 对齐验收、两平台工作台人工验收和真实视频齐备；Phase 8 仅对明确选择的项目验收。应用可分别从干净 Windows/Mac 源码包按平台步骤安装启动，原生读取/发送隔离，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、固定会话短文本原型、离线截图、模型控制台或阶段文档不能作为最终完成。
 
-当前交付事实为 Windows Phase 1–4 已完成，Mac Phase 5 取钥/读取/固定发送回读已通过，收件及 G1/G2 待验收，Phase 6 未开始。继续 Phase 5 发送/Agent 实机验收，再进入已授权 Phase 6；不自动实施 Phase 7–9。两平台测试均采用单好友低频、至少 30 秒发送间隔、单次最多 3 条回复；不承诺避免账号限制。
+当前交付事实为 Windows Phase 1–4 已完成，Mac 已有密钥/读取已复验，降级固定自然对话发送及对端一次收件已确认，实际两轮 Agent 回复及 DB 确认通过，用户接受并要求标通过，worker 已停止。严格视觉检查、稳定性与 G1/G2 未通过，Phase 6 未开始。本轮 Phase 5 降级流程已标记 passed，不自动实施后续阶段。真实收发采用自然日常对话、单好友低频、至少 30 秒发送间隔、单次最多 3 条回复。

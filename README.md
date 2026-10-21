@@ -6,7 +6,7 @@
 
 执行顺序、阶段状态及完成条件见 [执行计划](docs/wechat-agent-plan.md)，当前代码事实见 [开发入口](docs/overview.md)。
 
-Mac Phase 5: key capture, original-client restoration and fresh-message reading have passed on the local Mac. Live sends automatically activate and raise the bound WeChat main window before checking the chat and draft. The fixed send is confirmed by a new exact local database record; recipient confirmation is pending. Mac G1/G2 have not passed and Phase 6 has not started. See [Mac setup and limitations](docs/mac-probe.md).
+Mac Phase 5: the user has explicitly selected a degraded flow mode using one bound independent AX window, one clipboard paste/send, and independent database confirmation. Visual draft/occlusion checks are skipped and reported as unverified. A natural-conversation fixed send was received once; two real Agent replies were DB-confirmed and accepted by the user. The degraded flow is marked passed and the worker is stopped. Strict Mac G1/G2 have not passed and Phase 6 has not started. See [Mac setup and limitations](docs/mac-probe.md).
 
 ## 技术路线与运行范围
 
