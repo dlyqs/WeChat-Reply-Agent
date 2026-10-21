@@ -124,6 +124,7 @@ class ReplicaAdapter:
             shard=row["shard"],
             local_id=row["local_id"],
             sort_seq=row["sort_seq"],
+            source_created_at=row.get("create_time"),
             sender_username=sender or None,
             direction=direction,
             type="text"

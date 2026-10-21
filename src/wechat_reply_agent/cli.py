@@ -1,4 +1,4 @@
-"""Explicit G1 probes. This module never runs a worker or opens a browser."""
+"""Explicit Windows probes and bounded Agent prototype; never opens a browser."""
 
 import argparse
 import json
@@ -110,6 +110,14 @@ def parser():
     resolve = commands.add_parser("resolve", help="Record human verification of an uncertain probe")
     resolve.add_argument("--outbox-id", required=True)
     resolve.add_argument("--resolution", choices=("sent", "discarded"), required=True)
+    resolve.add_argument("--ledger", action="store_true", help="Resolve a prototype SQLite outbox")
+    prototype = commands.add_parser("prototype", help="Bounded minimal Agent; new messages only")
+    prototype.add_argument("--mode", choices=("dry-run", "live"), default="dry-run")
+    prototype.add_argument("--duration", type=int, choices=range(1, 1801), default=600)
+    prototype.add_argument("--max-replies", type=int, choices=range(1, 4), default=3)
+    prototype.add_argument(
+        "--output", type=Path, default=Path(".local/acceptance/phase-2/prototype.json")
+    )
     return root
 
 
@@ -133,11 +141,55 @@ def execute(args, settings: Settings, adapter):
         write_private(args.output, report)
         return 0 if health.healthy else 2
     with probe_lock(settings.data_dir):
+        if args.command == "prototype":
+            import asyncio
+
+            from wechat_reply_agent.llm.client import CompatibleModel
+            from wechat_reply_agent.runtime.prototype import Prototype
+            from wechat_reply_agent.storage.prototype import Ledger
+
+            try:
+                gate = json.loads(
+                    (settings.data_dir / "acceptance/phase-1/report.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+            except (ValueError, OSError):
+                raise AdapterError("g1_report_required") from None
+            if (
+                gate.get("g1") != "passed"
+                or gate.get("plan_version") != "v4"
+                or gate.get("foundation") != "replica"
+            ):
+                raise AdapterError("replica_g1_required")
+            if settings.wechat_adapter != "replica" or not settings.llm_api_key.get_secret_value():
+                raise AdapterError("replica_and_real_model_required")
+            if settings.poll_interval_seconds < 10:
+                raise AdapterError("prototype_poll_minimum_10_seconds")
+            settings.send_mode = args.mode
+            ledger = Ledger(settings.data_dir / "prototype.sqlite3")
+            try:
+                runtime = Prototype(settings, adapter, CompatibleModel(settings), ledger)
+                return asyncio.run(runtime.run(args.duration, args.max_replies, args.output))
+            finally:
+                ledger.close()
         if args.command == "resolve":
             from uuid import UUID
 
             try:
                 outbox_id = str(UUID(args.outbox_id))
+                if args.ledger:
+                    from wechat_reply_agent.storage.prototype import Ledger
+
+                    ledger_path = settings.data_dir / "prototype.sqlite3"
+                    if not ledger_path.exists():
+                        raise AdapterError("prototype_ledger_missing")
+                    ledger = Ledger(ledger_path)
+                    try:
+                        ledger.resolve(outbox_id, args.resolution)
+                    finally:
+                        ledger.close()
+                    return 0
                 receipt = settings.data_dir / "probe-sends" / f"{outbox_id}.json"
                 record = json.loads(receipt.read_text(encoding="utf-8"))
             except (ValueError, OSError):
@@ -249,15 +301,18 @@ def main(argv=None):
         error = str(exc)
     except Exception:
         error = "local_or_native_operation_failed"
+    except KeyboardInterrupt:
+        emit("operation.stop", outcome="cancelled")
+        return 130
     output = getattr(args, "output", None)
     if output:
         try:
             write_private(
                 output,
                 {
-                    "phase": 1,
+                    "phase": 2 if args.command == "prototype" else 1,
                     "plan_version": "v4",
-                    "g1": "not_tested",
+                    "g2" if args.command == "prototype" else "g1": "not_tested",
                     "status": "failed",
                     "code": error,
                 },

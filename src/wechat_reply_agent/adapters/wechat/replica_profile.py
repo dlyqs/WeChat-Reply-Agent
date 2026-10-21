@@ -21,7 +21,7 @@ class ReplicaProfile(Contract):
     account_ref: str = Field(min_length=1)
     account: str = Field(min_length=1)
     self_username: str = Field(min_length=1)
-    account_generation: str = Field(min_length=1)
+    account_generation: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     db_root: Path
     account_confirmed: bool = False
     wechat_version: str = Field(min_length=1)
@@ -29,7 +29,11 @@ class ReplicaProfile(Contract):
 
     @model_validator(mode="after")
     def safe_binding(self):
-        if Path(self.account).name != self.account or self.account in (".", ".."):
+        if (
+            Path(self.account).name != self.account
+            or self.account in (".", "..")
+            or any(c in self.account for c in "/\\:")
+        ):
             raise ValueError("invalid account directory")
         for field in ("alias", "username", "title"):
             values = [getattr(c, field) for c in self.contacts]

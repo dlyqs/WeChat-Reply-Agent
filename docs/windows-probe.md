@@ -8,7 +8,7 @@
 - 环境：Windows 10/11 x64、Python 3.12、登录用户交互桌面。微信 4.1.15.53 是上游测试记录，必须在本机验证。
 - 读取：允许基座按选定账号取钥、缓存和读取数据库/WAL；不把完整历史导入本应用。
 - 发送：允许 UIA 热激活（进程中 Qt accessibility 标志写入）、坐标/OCR、窗口激活和剪贴板；OCR 默认按混合路线开启。
-- 当前尚无 third_party 内置基座、ReplicaAdapter 或 Windows G1 证据；本页的新命令由 Phase 1 实现后才可执行。
+- 已内置基座和 ReplicaAdapter，doctor/connect/probe/resolve/prototype 可执行。本机 4.1.15.56 的私有 G1 证据已记录；不扩展为所有 4.1.x 兼容结论。
 
 ## 执行顺序
 
@@ -22,7 +22,7 @@
 6. dry-run 验证无写入/按键；准备空白草稿与明确测试会话后执行一次带 --confirm-send 的固定回复，由对端确认。
 7. 记录 plan_version=v4、foundation=replica、实际版本/路径摘要、案例状态与私有证据位置；G1 确认后再执行 Agent G2。
 
-开发目标入口为 doctor、connect、probe read/send。当前旧 CLI 尚未适配 Windows；不能将目标命令的文档存在视为实现完成。后续 Windows 安装使用主项目锁与本地基座，不额外安装旧 scripts/probes/windows-requirements.txt。
+实际安装使用 `uv sync --locked --extra windows`。按 README 的 doctor → 私有绑定 → connect → read → dry-run → 一次显式 live 顺序操作。原生操作只从 ReplicaBridge 进入，不安装旧 scripts/probes/windows-requirements.txt。
 
 ## G1 用例与失败出口
 

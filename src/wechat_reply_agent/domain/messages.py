@@ -36,6 +36,7 @@ class InboundEvent(Contract):
     shard: str | None = None
     local_id: int | None = None
     sort_seq: int | None = None
+    source_created_at: int | None = None
     sender_username: str | None = None
     occurrence_ref: str
     direction: Direction

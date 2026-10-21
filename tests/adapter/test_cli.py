@@ -100,3 +100,20 @@ def test_non_macos_diagnostic_is_offline(settings, monkeypatch):
     )
     health = MacAXAdapter(settings).health()
     assert not health.healthy and health.reason == "macos_required"
+
+
+def test_uncertain_probe_blocks_new_send_until_human_resolution(settings, adapter, bridge):
+    args = parser().parse_args(
+        ["probe", "send", "--contact", "a", "--text", "test", "--confirm-send"]
+    )
+    assert execute(args, settings, adapter) == 3
+    receipt = next((settings.data_dir / "probe-sends").glob("*.json"))
+    with pytest.raises(AdapterError, match="unresolved_probe_stop_required"):
+        execute(args, settings, adapter)
+    assert bridge.keys == 1
+    resolve = parser().parse_args(
+        ["resolve", "--outbox-id", receipt.stem, "--resolution", "discarded"]
+    )
+    assert execute(resolve, settings, adapter) == 0
+    assert json.loads(receipt.read_text())["resolution"] == "discarded"
+    assert bridge.keys == 1

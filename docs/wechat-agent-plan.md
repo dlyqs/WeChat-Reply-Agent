@@ -7,14 +7,14 @@
 execution mode: auto_until
 automatic start phase: 1
 automatic stop phase: 2
-execution state: running
+execution state: completed
 conversation relay: off
-current change: phase 1 G1 passed; phase 2 implementation
+current change: phase 1-2 completed; G1/G2 passed; worker stopped
 wechat foundation: wechatauto-replica 1.2.7.0
 upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 ~~~
 
-v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义与自动授权范围；后续阶段合并为 Phase 4–7，旧 Phase 4–18 编号不再用于执行。本次只修改计划和入口文档，不启动实现、安装、真实读库或进程修改；后续明确继续时，在 Windows 工作区按保存范围推进，依次通过 G1/G2。
+v4 完整替换 v3 和原 18 阶段规格。Phase 1–3 保留原有含义；后续合并为 Phase 4–7。2026-10-21 用户明确要求自动完成 Phase 1–2；现已完成 G1/G2 并停止。本次不继续 Phase 3，原计划修订时的暂停记录已由本次执行状态替代。
 
 ## 1. 交付目标与范围
 
@@ -66,7 +66,7 @@ doctor 必须保持只读：不构造会取钥或热激活的对象，不调用�
 
 third_party/wechatauto_replica/UPSTREAM.md 记录来源、精确 SHA、导入文件、上游版本、资源、依赖和每个本地补丁；原依赖范围经 Windows 锁解析收敛到 uv.lock。升级是明确的补丁/版本变更，不在应用启动时自动拉取。
 
-仅对影响本期收发、身份、隐私或运行的具体问题做最小补丁；不重写 SQLCipher、OCR 引擎或整套 UI 自动化。当前尚未导入第三方源码，以下是实施目标。
+仅对影响本期收发、身份、隐私或运行的具体问题做最小补丁；不重写 SQLCipher、OCR 引擎或整套 UI 自动化。固定源码已在 Phase 1 导入，实际补丁和限制见 third_party/wechatauto_replica/UPSTREAM.md。
 
 ### 3.2 模块职责
 
@@ -142,7 +142,7 @@ flowchart LR
 | `replay --suite <name> --output <json>` | 合成输入回放，结果标为 offline，不接触微信 |
 | `verify` / `package --video <path>` | 检查/打包已存在的真实产物，不启动客户端、不上传或推送 |
 
-上述为实施目标；当前 CLI 仍是旧 Mac 原型，没有 Replica/connect/prototype/serve，不能将计划命令标为已可执行。
+当前已实现 doctor/connect/probe/resolve/prototype；serve/replay/verify/package 仍是后续目标，不能将其标为已可执行。
 
 | 配置组 | 目标字段 |
 | --- | --- |
@@ -181,8 +181,8 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | 阶段 | 主题 | 交付等级 | 状态 | 当前事实与依赖 |
 | --- | --- | --- | --- | --- |
 | Phase 1 | 基座内化、适配与固定收发 | 必需 | completed | 固定基座已内化；Windows 4.1.15.56 G1 通过，私有报告已记录 |
-| Phase 2 | 最小 Agent 闭环 | 必需 | in_progress | G1 已通过；实现最小 Agent 并执行真实模型/微信 G2 |
-| Phase 3 | 配置、持久化与运行控制 | 必需 | pending | 等待 G2；收敛原型到正式仓储 |
+| Phase 2 | 最小 Agent 闭环 | 必需 | completed | LangGraph/SQLite 原型与 DeepSeek 三轮 G2 通过；达到 3 条上限后已停发 |
+| Phase 3 | 配置、持久化与运行控制 | 必需 | pending | G2 已通过；本次范围止于 Phase 2，正式仓储/服务待后续授权 |
 | Phase 4 | 本地 API 与工作台 | 必需 | pending | Phase 3；前端仅静态验证，用户验收界面 |
 | Phase 5 | 知识检索与长期记忆 | 必需 | pending | Phase 4；复用 Phase 2 Agent 扩展 |
 | Phase 6 | 业务工具、文件与语音入口 | 可选，未选择 | pending | Phase 5；未选择则记录不纳入并转 Phase 7 |
@@ -219,10 +219,10 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 
 任务：
 
-- [ ] 可配置真实模型、简短人设、结构化 AgentResult、输入/输出限制、超时和调用预算；FakeModel 仅用于离线测试。
-- [ ] 应用低频轮询、基线、inbox/游标事务、本人/系统过滤、连续消息合并与单会话串行接通 Agent。
-- [ ] 先持久化模型结果和 outbox，再由唯一 GUI 通道调用基座；回调/模型重试不重试已不确定的发送。
-- [ ] prototype 支持 dry-run/live、停止与错误报告；公开日志不含私聊或凭据。
+- [x] 可配置真实模型、简短人设、结构化 AgentResult、输入/输出限制、超时和调用预算；FakeModel 仅用于离线测试。
+- [x] 应用低频轮询、基线、inbox/游标事务、本人/系统过滤、连续消息合并与单会话串行接通 Agent。
+- [x] 先持久化模型结果和 outbox，再由唯一 GUI 通道调用基座；回调/模型重试不重试已不确定的发送。
+- [x] prototype 支持 dry-run/live、停止与错误报告；公开日志不含私聊或凭据。
 
 验收：
 
@@ -232,7 +232,7 @@ Phase 4–7 已有具体实施与验收定义，但不因本次计划修订而�
 - P02-04：重复回调/轮询只生成一个 outbox；连续同文新消息可分别处理；重启重新建基线，不回复旧历史。
 - P02-05：记录真实轮询、模型和发送耗时，不以旧实时指标拒绝固定环境演示，也不隐瞒实际延迟。
 
-完成记录：未开始；G1 通过后执行，G2 必须有真实模型与对端核对。
+完成记录（2026-10-21）：最小 LangGraph、限时单次 DeepSeek 兼容调用、输入/输出预算、SQLite inbox/游标事务、合并/串行/outbox、跨重启基线和 unknown 停发已实现。121 项离线测试、Ruff 和构建通过；源码归档在新目录完成 Windows 锁安装及 CLI 导入。真实模型使用 deepseek-flash，已完成 3 轮微信问答，用户确认全部收件且上下文追问记得测试姓名；G2 passed。真实 poll 约 0.34–0.38 秒，模型约 1.2–1.5 秒，发送/回读约 3.4 秒；轮询配置 15 秒，发送间隔约 51 秒。原始证据 `.local/acceptance/phase-2/report.json`，不把离线反例当实机故障。worker 达到 3 条上限后已停止。Phase 3 未实施。
 
 ### Phase 3：配置、仓储与运行控制收敛
 
@@ -354,7 +354,7 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 1. 下一次先读本计划、overview 和 Windows 接入说明，核对当前工作区、提交、已有 Windows 证据及适用约束。
 2. 不再安装旧 wxauto4 探针依赖，不按旧 Mac AX/OCR 选型继续试错；旧文件只作历史，必要契约和测试可复用。
-3. 当前实现暂停；明确继续后沿原 auto_until 1–3 执行。G1/G2 缺失或环境未就绪时记录 blocked 和解除条件，不能跳关。
+3. 本次明确执行 Phase 1–2，已完成并停止；原 1–3 自动范围不覆盖本次收窄指令。G1/G2 缺失或环境未就绪时记录 blocked 和解除条件，不能跳关。
 4. Phase 1–3 编号保持，旧 Phase 4–6/11–15 相关应用集成合并到新 Phase 4；旧 7/9/13 的知识记忆归新 Phase 5；旧 8/10 的工具与附件归新 Phase 6；旧 15–18 的打包/验证/录像归新 Phase 7。
 5. 旧用例编号和报告保留其日期与方案，不改写旧测试结果，不将其映射成新基座已通过；新记录注明 plan_version=v4 和 foundation=replica。
 6. Phase 3 后仍保留当前授权终点；后续实施按明确阶段/范围指令推进，不因已写出计划而自行执行。

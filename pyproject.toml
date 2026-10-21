@@ -9,7 +9,7 @@ description = "Local WeChat reply agent with explicit sending gates"
 license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12,<3.14"
-dependencies = ["pydantic>=2.12,<3", "pydantic-settings>=2.11,<3"]
+dependencies = ["pydantic>=2.12,<3", "pydantic-settings>=2.11,<3", "langgraph>=1,<2", "httpx>=0.28,<1"]
 
 [project.optional-dependencies]
 windows = ["wechatauto-replica==1.2.7.0; sys_platform == 'win32'"]
