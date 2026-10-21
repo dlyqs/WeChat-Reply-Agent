@@ -14,6 +14,8 @@
 
 | 项目 | 技术与证据 | 当前判断 |
 | --- | --- | --- |
+| [stkoecn/im-mcp](https://github.com/stkoecn/im-mcp) | Python；Mac LLDB 取钥、WCDB/SQLCipher 页解密、WAL 合并、消息解析、SQLite 索引、MCP 查询；核心读取源码齐全 | 新增优先审计候选，适合复用结构化读取与索引设计。无需 OCR，但目前是定时快照同步，最低 5 分钟，不是实时自动回复通道；WAL 有效性、快照一致性与密钥日志仍需改造。无发送工具，本机 4.1.5 未验证。详见下节。 |
+| [Luofeng-Cloud/WeChat-AI-AutoReply](https://github.com/Luofeng-Cloud/WeChat-AI-AutoReply) | Windows Win32 截图/消息投递 + RapidOCR + 像素变更检测 + 模型自动回复；MIT | 不适合作为当前 Mac 无 OCR 接入。Zero-Mouse 指鼠标动作方式，读取和发送前会话核验仍用 OCR；作者也确认是 Windows 版。可参考变更检测与发送前复核思路。 |
 | [jackwener/wx-cli-again](https://github.com/jackwener/wx-cli-again) | Rust / SQLCipher / 本地 daemon / DB+WAL 更新 / watch；公开源码含 Cargo.lock、查询/取钥/缓存/测试代码；Apache-2.0 | 优先做独立源码审计和合成数据验证。README 安装指向 private 的 botiverse/wx-cli，但当前公开仓库确实有源码快照；应审计这个快照并自行构建，不能照抄私有上游安装说明。取钥涉及进程读取，缺少密钥时可进入 LLDB 断点路径；不是零侵入接口。 |
 | [acmerfight 的 Mac 本地工具 Gist](https://gist.github.com/acmerfight/0a01249ef72970d07a2603dbb629e80f) | 实际提供 wechat_db.py、sqlcipher_probe.py、bootstrap_keys.py、capture_keys.py、测试和验证文档；MIT；读取端是 DB+WAL、分库 local_id 游标和 ack | 值得与 Rust 候选并列审计读取部分。作者记录环境 macOS 15.6.1 / arm64 / 微信 4.1.15，不是本机环境。首次方案调试并重签临时应用副本，作者声称保留原版签名和 SIP；通用 bootstrap 封装、人工逐步实测与合成测试的验证层级不同。其 Swift 发送端仍使用 OCR，不能整体作为本项目无 OCR 方案。 |
 | [hicccc77/WeFlow](https://github.com/hicccc77/WeFlow) | 跨平台本地记录查看/分析；HTTP API 与 SSE 新消息事件；已读 keyProviderService、wcdbCore、messagePushService 和组件契约 | 能参考结构化数据 API 和推送，但当前原生读取/解密组件全部外置，clone 后不具备完整取钥和查询能力。LICENSE 为 CC BY-NC-SA 4.0，不能当作 MIT/Apache 代码直接复用到任意交付。 |
@@ -24,6 +26,42 @@
 | [lich0821/WeChatFerry](https://github.com/lich0821/WeChatFerry) | Windows Hook/注入 + RPC，有消息接收与发送；MIT | 原仓库已 archived，2026-07-10 最后推送；不是当前 Mac 4.1.5 的直接方案。 |
 | [Wechaty](https://github.com/wechaty/wechaty) / [ItChat](https://github.com/littlecodersh/ItChat) | Wechaty 是框架，接入能力取决于 Puppet；ItChat/puppet-wechat 是 Web 会话路线 | 有成熟消息事件抽象，但安装 SDK 不代表当前账号能登录协议或当前 Mac 可读。要检查具体 provider、登录限制和维护状态，不能只看框架 stars。 |
 | [CosmosShadow/UseChat](https://github.com/CosmosShadow/UseChat) | 公开 README 明确截图、系统 OCR hints 与视觉模型共同读取；支持 agent 接口 | 属于 Computer Use 视觉路线，不符合最终无 OCR 的读取要求；不因 CLI/MCP 封装就变成结构化底层读取。 |
+
+## 用户指定项目的进一步核查
+
+本次核对固定源码快照、README、依赖、同步/查询/取钥实现、测试和相关 issue；没有安装项目或执行初始化、取钥、解密、发送。以下运行能力均为源码结论或作者记录，不能替代本机验证。
+
+### WeChat-AI-AutoReply：Windows OCR 自动回复
+
+固定快照：`696ebc314b2f67a3469f6b9e53726b5090f54554`。`wechat_ai_bot_dev.py` 导入 RapidOCR，并直接调用 `ctypes.windll.user32/gdi32/shcore/kernel32`；实际扫描函数先截图和像素差分，再调用 OCR 识别内容。像素哨兵和缩放能减少 OCR 工作量，没有改变文字来源。[平台依赖](https://github.com/Luofeng-Cloud/WeChat-AI-AutoReply/blob/696ebc314b2f67a3469f6b9e53726b5090f54554/wechat_ai_bot_dev.py#L13-L21)、[读取链路](https://github.com/Luofeng-Cloud/WeChat-AI-AutoReply/blob/696ebc314b2f67a3469f6b9e53726b5090f54554/wechat_ai_bot_dev.py#L938-L995)
+
+其 Zero-Mouse 采用 Win32 消息/按键机制实现动作；发送前仍 OCR 顶栏和侧栏确认目标，点击纠偏后再次 OCR 复核。作者在 [Mac 支持 issue](https://github.com/Luofeng-Cloud/WeChat-AI-AutoReply/issues/3#issuecomment-6163086699) 明确答复当前是 Windows 版，Mac 要替换系统 API 并适配 OCR 布局。[发送实现](https://github.com/Luofeng-Cloud/WeChat-AI-AutoReply/blob/696ebc314b2f67a3469f6b9e53726b5090f54554/wechat_ai_bot_dev.py#L767-L830)
+
+[#5](https://github.com/Luofeng-Cloud/WeChat-AI-AutoReply/issues/5) 有用户报告空白画面被识别为符号并反复回复；这仅是 issue 报告，不推断所有版本均有此问题。本项目不能将其“零风险”或响应速度宣传作为实测事实。可参考静止画面过滤和发送复核，不采用其核心通道满足 Mac 无 OCR 目标。
+
+### im-mcp：无 OCR 读取源码齐全，实时链路仍需补齐
+
+固定快照：`405675b619397adc1b2d2549bb0cee1714ad46f7`，Python 包版本 0.0.1。微信链路为：源库与 WAL → 解密快照 → ETL 导入 `app.db`/FTS5 → MCP 查询。其“只读”指不向微信发送或写入原始消息；工具会保存密钥、明文快照和自身索引。核心能力在当前公开仓库中，不是仅有 MCP 外壳或依赖私有原生组件。
+
+值得采用的部分：
+
+- **实际实现 Mac 取钥**：`capture_passphrase_lldb` attach 微信进程，在 `CCKeyDerivationPBKDF` 设置断点，按 arm64/x86_64 寄存器读取口令原料，再 PBKDF2 派生和 HMAC 验证。已有口令可复用；Mac 4.1 默认走 LLDB 分支，需要重新登录触发。故障提示包含重签原版微信建议，说明 MCP 封装没有消除调试权限/签名条件；本轮未执行该建议。[捕获实现](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1095-L1207)、[4.1 路由](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1889-L1948)、[权限失败提示](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1322-L1329)
+- **消息标识比纯时间戳更合适**：索引以 `(source_file, session_username, local_id)` 唯一约束去重，UPSERT 保留已有行的 `id`；`get_messages_since(after_id=...)` 按递增索引 ID 分页，返回 `next_cursor/has_more`，不会因两条消息同文或同秒而直接合并。该 ID 是中间索引 ID，不能命名为微信服务端消息 ID；消费方仍须持久化 inbox 后再提交游标。[schema](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/database.py#L75-L85)、[UPSERT](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/adapters/v4.py#L206-L220)、[游标工具](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/server.py#L1328-L1418)
+- **可参考解析与查询边界**：读取解密库使用 SQLite `mode=ro`，解析真实会话/发送者映射；Name2Id 读取失败会跳过该分库，避免身份键漂移。它提供历史、搜索、通讯录等读取工具，没有发送工具。
+
+不能直接接入自动回复的缺口：
+
+| 发现 | 对本项目的影响与需要补齐的内容 |
+| --- | --- |
+| 自动同步默认 30 分钟、最小 5 分钟；每次重新解密再 ETL | 查询已建索引快，不等于新消息发现快。`get_messages_since` 本身不刷新源库；当前周期不满足轮询 ≤2 秒与回复 P95 ≤20 秒目标。需要验证真正的按变更分库刷新/增量读取，不能只把定时器改成 1 秒。[同步配置和流程](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/auto_sync.py#L40-L48)、[刷新入口](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/auto_sync.py#L169-L181) |
+| WAL 合并按固定帧长度遍历，只取页号/提交页数，没有校验头部 magic/page size、帧与头部的 salt、累计 checksum | 从源码推断，WAL reset 后残留旧帧和并发更新存在误合并风险；页数比较与 SQLite quick_check 不能证明快照来自同一代、内容最新。这是静态审计发现，尚未构造复现；采用前需验证 WCDB 实际格式并补合成 WAL reset/截断/坏帧/并发 checkpoint 用例。SQLite 标准明确以 salt 与 checksum 判定有效帧。[当前合并实现](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1722-L1789)、[SQLite 官方格式](https://sqlite.org/fileformat2.html#wal_file_format) |
+| 主库解密和 WAL 读取分两步进行，直接覆写输出；WAL 失败可回退主库并继续 | 未看到足够证据保证活动源库的单一时点快照或刷新失败后停发。需要有界重试/一致性检查、临时快照原子发布和明确 degraded 状态，不能把旧快照查询成功当作已读到最新消息。[解密主流程](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1680-L1719)、[WAL 回退](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1840-L1858) |
+| `after_id` 只覆盖新插入行；身份是中间库局部状态 | 正常 UPSERT 不漂移；但删库重建、账号切换仍需 account/index generation，不能沿用旧游标。已有行内容更新不会被 `id > cursor` 发出；若要处理撤回/更新需单独变更事件。`after_time` 仍是严格时间大于，不推荐作为唯一游标。 |
+| 取钥日志输出口令前缀，4.0 raw-key 分支还打印完整 enc_key；默认捕获无限等待 | 接入前须去除秘密日志并设置有界超时、受控退出和私有存储权限，不能直接运行原初始化器并收集全部 stdout。[口令前缀日志](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1246-L1255)、[raw-key 日志](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/key_tool.py#L1452-L1460)、[默认超时](https://github.com/stkoecn/im-mcp/blob/405675b619397adc1b2d2549bb0cee1714ad46f7/src/wechat_mcp/tools/__init__.py#L50-L54) |
+
+作者 README 记录的 Mac 实测版为 arm64 微信 4.1.35.15、Intel 4.1.15，不含本机 4.1.5（31960）/macOS 27.0.1 组合；“支持 4.x”不能代替该组合验收。已查看同步 mock 测试、合成 SQLite 时间分页测试和基础 MCP 测试，未运行上游测试，也未获得上述实时/WAL/本机兼容性的实测证据。`pyproject.toml` 声明 MIT，但当前仓库树没有 LICENSE/COPYING 正文；复制代码前还需核对上游来源与完整许可声明。
+
+推荐把 im-mcp 提升为**结构化消息解析/索引层的优先候选**，与 Gist 的 Reader/ack 和 Rust daemon/WAL 方案交叉审计；不将它整体包装成已完成的实时自动回复器。最终应用可直接复用可审计的 Python 读取部件，不必为了 MCP 再增加一个 Agent。发送端、本机取钥可行性、实时新鲜度和崩溃后消费语义仍分别验收，G1 状态不变。
 
 ## 已失效或缺少核心实现的依赖链
 
@@ -44,7 +82,7 @@ Gist 的读取端提供分库 local_id 与显式 ack，是更贴近可靠 inbox 
 
 ## 推荐研究顺序与边界
 
-1. 若坚持当前 Mac + 无 OCR，优先审计 Gist 的只读 Reader 与 wx-cli-again 的源码快照，分离取钥和日常读取。先对合成 SQLCipher DB/WAL、连续同文、同秒消息、游标/ack/崩溃恢复验证。
+1. 若坚持当前 Mac + 无 OCR，优先审计 im-mcp 的消息解析/稳定索引与 Gist 的只读 Reader/ack，结合 wx-cli-again 的 daemon/WAL 方案，分离取钥和日常读取。先对合成 SQLCipher DB/WAL、连续同文、同秒消息、游标/ack/崩溃恢复和 WAL reset 验证；im-mcp 的现有定时快照不能直接满足实时要求。
 2. 首次取钥只比较具体可审计路径：已有有效密钥复用、受权进程读取、临时副本调试。对“无需 SIP / sudo 即可 / 绝不封号”等 README 保证不作本项目承诺。Gist 记录在其 Hardened Runtime 环境中 root 仍无法申请读取端口，与另一项目的概括存在环境差异，必须以本机事实为准。
 3. 发送端另测，保留白名单、唯一身份、草稿/焦点校验、unknown 禁止盲重发。DB 回读能提供发送后证据，不能撤销错对象发送，不能替代发送前身份核对。
 4. 原计划排除了聊天数据库/内存/Hook；本轮仅研究这些候选，尚未授权执行。采用新路线前需明确调整接入边界和 G1 用例；不擅自关闭 SIP、重签主微信、安装指定版本副本、读取真实数据库或执行断点取钥。
@@ -54,6 +92,8 @@ Gist 的读取端提供分库 local_id 与显式 ack，是更贴近可靠 inbox 
 
 | 来源 | 本次读取版本 |
 | --- | --- |
+| Luofeng-Cloud/WeChat-AI-AutoReply | `696ebc314b2f67a3469f6b9e53726b5090f54554` |
+| stkoecn/im-mcp | `405675b619397adc1b2d2549bb0cee1714ad46f7`，Python 包版本 0.0.1 |
 | wx-cli-again | `077a54cbfe679bda963cd038d8440422907fc797`，Cargo 版本 0.6.3 |
 | huohuoer/wechat-cli | `a3789232d4f79bf0b30634d9dadbce71e4acd601` |
 | WeFlow | `fb58afa9876c6b334887a33471dd5f0077eedec4` |

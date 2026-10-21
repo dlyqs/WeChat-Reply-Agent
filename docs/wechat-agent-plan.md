@@ -264,6 +264,7 @@ SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGr
 - 用户保持测试会话前台后，读取实际触发，但 AX 返回 `ax_control_missing_or_ambiguous`。只读树诊断仅 5 个节点，无会话/消息/输入框；临时 AXEnhancedUserInterface 启用请求返回 -25208，前后 false。判定当前微信 4.1.5（31960）AX 候选不可用。按既定 A 备选审阅截图/OCR 源码与 MIT，新增本机 Vision 只读诊断（不发送、不将 OCR 行冒充消息），56 项离线测试及合成图片真实 OCR 通过。等待用户前台采样验证；G1 仍未通过，不进入 Phase 2/3。原始诊断仅存本地忽略目录，公开不含真实会话名或正文。
 - 无 OCR 核查：主进程消息树不可见，13 个同应用包辅助进程未暴露 AX 窗口；未发现原生 AppleScript 脚本字典。菜单存在 Copy/Select All/Paste，但当前 disabled，复制原始消息的能力仍 not_tested。停止视觉等待，优先考虑剪贴板取文验证；Windows UIA、数据库读取仅对比，未改变平台/数据库边界。完整脱敏发现见 prototype-report 的无 OCR 小节，G1 仍 blocked。
 - 按用户要求完成 GitHub 与全网无 OCR 读取调研，筛查十余个项目并核对关键源码/当前可用性，结果见 `docs/wechat-reading-research.md`。优先研究候选调整为可审计的只读 DB+WAL Reader（Gist / wx-cli-again），发现旧 Python new-messages 仅摘要、Rust 时间戳增量仍需补消息级游标；Chatlog 等旧依赖链已有移除/不可访问。此为选型建议，不执行真实取钥、重签/断点或数据库读取，不改变现有接入授权边界；G1 仍 blocked。
+- 进一步核查用户指定的 WeChat-AI-AutoReply 与 im-mcp：前者为 Windows OCR；后者有 Mac LLDB 取钥、解密/WAL、结构化消息 UPSERT 与 ID 游标，可提升为读取层优先候选。但当前自动同步最低 5 分钟，无发送能力，WAL 有效性/快照一致性、密钥日志和索引重建游标仍需补验证。详见调研文档固定源码快照；本轮仅公开源码研究，未安装/初始化或读取真实数据，G1 及阶段状态不变。
 - 授权原话「请自动完成 phase1-3」已保存为 `auto_until` 1–3；因 G1 硬关口停止，Phase 2/3 依赖未满足，不实现、不标完成。收到 G1 证据后按原授权续做；G2 仍须真人实测。实现提交 `7a7425c`（`feat(adapter): add guarded AX channel prototype and offline G1 tests`）；授权和阻塞状态另作文档提交。
 
 ### Phase 2：最小 AI 闭环与 G2
