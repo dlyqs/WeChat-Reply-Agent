@@ -114,3 +114,7 @@ uv build
 测试使用合成 AX 桥和 FakeAdapter，不调用真实原生探针；FakeAdapter 不能从 CLI 冒充微信。`doctor/probe` 是本阶段可用命令，其余计划命令尚未实现。锁文件含 mac 可选依赖；真实版本支持矩阵仍为 `not_tested`。
 
 来源与许可：[复用登记](docs/reuse-register.md)、[第三方声明](THIRD_PARTY_NOTICES.md)。当前不远程发送内容、不需要任何模型 Key。
+
+## 当前微信版本的接入补记
+
+实测微信 4.1.5（31960）在当前环境中没有暴露 AX 会话/消息/输入框，上述 AX probe 会安全拒绝；暂不列为受支持版本。已增加本机 Vision 只读可行性诊断，Apple OCR 依赖包含在 `uv sync --locked --extra mac` 内。按当前分工由助手执行 `scripts/probes/vision_read.py`，用户只需保持目标会话前台。该诊断不上传截图、不发送消息、不判断消息方向，尚不能替代 G1；详见原型报告。

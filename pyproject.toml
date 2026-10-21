@@ -16,6 +16,8 @@ mac = [
   "pyobjc-framework-Quartz>=11,<13; sys_platform == 'darwin'",
   "pyobjc-framework-ApplicationServices>=11,<13; sys_platform == 'darwin'",
   "Pillow>=11,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-vision>=11,<13",
+  "pyobjc-framework-vision>=11,<13 ; sys_platform == 'darwin'",
 ]
 
 [dependency-groups]
