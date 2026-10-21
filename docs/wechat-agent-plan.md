@@ -258,6 +258,7 @@ SQLite 使用参数化 SQL、外键、事务、WAL 和 schema migration。LangGr
 - 安全/限制：仅用户当前前台测试单聊；标题绑定身份依赖用户核实账号/同名/单聊；方向是 0.7 置信截图启发式，unknown 停用自动回复；可见快照不声称跨帧去重。Return 尝试记 unknown 而非送达，无自动重试；失败可能留测试草稿，保留现场。完整 SQLite/outbox 恢复按后续阶段，不冒充本阶段已具备。
 - **人工关口与解除条件**：用户按 README 填私有 profile，执行 doctor、两联系人各 5 条读取及各 1 条固定回复，核对方向/同文/收件对象，验证错会话和焦点不明时停发，提供脱敏 P01-02–04 结果。缺少上述环境和证据，G1 不能通过。
 - 用户随后明确「需要安装或者终端执行的你都自己执行」，据此执行真实只读 doctor：macOS 27.0.1 / arm64，Accessibility 与屏幕录制权限均可用，桌面已解锁，微信进程未运行。修正 Quartz console key，新增合成原生桥回归；当前 48 项 pytest、ruff 均通过。修复提交 `dc60302`。真实报告 `.local/acceptance/phase-1/doctor.json`；无实际读取/发送，G1 等待用户打开登录微信并核对效果。
+- 后续用户确认已登录并指定测试单聊，本地建立 `test-a` 绑定（真实名称仅存忽略的私有 profile）。实测 doctor 已可用，检测微信版本 4.1.5（31960），非 App Store 安装（原始渠道未核实）；P01-02 passed。读取尝试因微信不在前台被正确拒绝，未读取/发送消息，P01-03/04 仍未验收，等待用户保持测试会话前台。
 - 授权原话「请自动完成 phase1-3」已保存为 `auto_until` 1–3；因 G1 硬关口停止，Phase 2/3 依赖未满足，不实现、不标完成。收到 G1 证据后按原授权续做；G2 仍须真人实测。实现提交 `7a7425c`（`feat(adapter): add guarded AX channel prototype and offline G1 tests`）；授权和阻塞状态另作文档提交。
 
 ### Phase 2：最小 AI 闭环与 G2
