@@ -1,6 +1,6 @@
 # 本地 API 与工作台
 
-Phase 3–4 实现说明，2026-10-21。阶段状态以 [主计划](wechat-agent-plan.md) 为准。
+Phase 3–4 与 Phase 6 实现说明，2026-10-22。阶段状态以 [主计划](wechat-agent-plan.md) 为准。
 
 运行 `uv run wechat-agent serve`，手动访问 `http://127.0.0.1:8765`。监听仅限 loopback，不打开浏览器、不初始化微信。前端构建产物在 Python 包中，无需 Node 开发服务器。服务启动时固定 stopped/dry-run；配置返回的 `session` 来源表示本次启动覆盖。
 
@@ -12,8 +12,8 @@ Phase 3–4 实现说明，2026-10-21。阶段状态以 [主计划](wechat-agent
 
 | 方法 / 路径 | 内容 |
 | --- | --- |
-| GET /api/health | 应用可用性、运行摘要；不检查/初始化原生微信 |
-| GET /api/runtime | stopped/starting/running/paused/degraded/stopping、原因、连接、模式、代数与本轮计数 |
+| GET /api/health | 应用可用性、实际基座及运行摘要；不检查/初始化原生微信 |
+| GET /api/runtime | stopped/starting/running/paused/degraded/stopping、原因、连接、模式、代数、本轮计数与平台能力 |
 | POST /api/runtime/start | 请求显式初始化、建立基线并开始；异步返回 starting，失败转 degraded |
 | POST /api/runtime/pause | 废弃迟到结果，等待当前调用结束并暂停 |
 | POST /api/runtime/resume | 从 paused 重新连接与建立基线；不恢复旧队列 |
@@ -24,9 +24,9 @@ Phase 3–4 实现说明，2026-10-21。阶段状态以 [主计划](wechat-agent
 | GET /api/runs/{trace_id} | 单次执行记录；不存在返回 404 |
 | GET /api/outbox | 分页回复意图、结果和人工处理状态；不暴露完整基座回执 |
 | POST /api/outbox/{id}/resolve | `{resolution: "sent"或"discarded"}`，仅停止/暂停/降级时记录人工结果，不重发 |
-| GET /api/settings | values/sources/readonly；密钥仅 llm_api_key_configured |
+| GET /api/settings | values/sources/readonly/inactive/platform；密钥仅 llm_api_key_configured |
 | PATCH /api/settings | 变更字段；密钥空值保留，clear_llm_api_key=true 显式清除 |
-| POST /api/diagnostics | 停止/暂停/降级时只读环境/能力检查，不取钥、不热激活 |
+| POST /api/diagnostics | 停止/暂停/降级时只读平台/环境/能力与权限检查，不取钥、不热激活 |
 
 运行与诊断请求可以使用空对象 `{}`。工作台每 3 秒读取状态，消息/会话每页 30 条，概览展示最近 50 条发送与 Agent 记录；API 支持继续分页。会话 id 必须配合 scope 使用，scope 隔离账号代数和发送模式。
 
@@ -38,11 +38,13 @@ Phase 3–4 实现说明，2026-10-21。阶段状态以 [主计划](wechat-agent
 
 启动恢复将 pending 输入置 paused，将 pending outbox 置 paused，将 sending 置 unknown；未人工处理的 paused/unknown outbox 会阻止开始。标已发/作废不会自动重试，也不会把人工结果冒充本地数据库发送证据。自动每轮最多 3 条，发送至少间隔 30 秒、每分钟至多 2 次。
 
-首次正式运行核对旧 inbox 的账号/代数，再固定 profile 的原生账号、self_username、数据根与现有数据库文件身份；后续变化被拒绝。新增/替换分片可能需要重新人工核实绑定；不宣称支持热换数据库。运行中及模型返回后发送前都检查应用账本与已绑定原生库文件身份。
+正式服务通过适配器 RuntimeBinding 核对账号/代数、原生库文件身份与平台，保留 Windows Phase 3 原指纹和旧账本。运行中及模型返回后发送前检查应用账本与源文件/盐变化；新增/替换分片可能需要重新核实绑定，不宣称热换库。睡眠/时钟异常间隔停止并要求重连。
+
+Windows v5 报告核验基座 revision/版本/绑定；原 v4 报告只能结合已有匹配的 Phase 3 本机账本识别，原报告不改写。Mac 默认视觉通道要求严格 G1/G2；显式降级通道核对本机版本、来源、绑定、用户已接受的 Phase 5 降级报告和原生固定发送回执。未决原生操作会在模型调用前阻止开始。人工处理先同步 Mac 原生 journal，再记录应用 outbox，仅记结论，不重发。
 
 配置以环境变量 > `.env` > 默认值读取。保存先校验，在 `.settings-private/` 中以当前用户权限暂存，fsync 后原子替换 `.env`；失败保留旧文件与内存配置。新配置仅在下次开始时用于 adapter/model。秘密不会进入 VITE_*、日志或 GET 响应。账号及数据库路径属于本机设置，可由设置页显示，不能作为公开报告内容。
 
-`RETENTION_DAYS` 控制显式开始时清理 DATA_DIR/replica 下过期缓存文件，保留新文件，不跟随逃逸目录的链接；不删除账本、身份、去重、profile 和 G1/G2 报告。过期密钥/校准缓存删除后会在显式连接流程重建。数据库、上下文和验收报告的人工清理需先停止服务。
+`RETENTION_DAYS` 控制显式开始时清理平台缓存，不跟随逃逸目录链接：Windows 清理 `DATA_DIR/replica` 的过期缓存；Mac 仅清理 `DATA_DIR/macos/diagnostics`，保留密钥、bootstrap 状态和发送 journal。不删除账本、身份、去重、profile 或验收报告。数据库、上下文和报告的人工清理需先停止服务。
 
 ## 自动验证与人工验收
 
@@ -61,4 +63,10 @@ Phase 3–4 实现说明，2026-10-21。阶段状态以 [主计划](wechat-agent
 
 人工验收完成记录（2026-10-21）：用户确认启动页面、配置/诊断、dry-run 完整流程、暂停/恢复/停止、一次 live 实际回复与对端收件，以及退出重启后 stopped/dry-run 和历史保留均通过。Phase 4 已完成。未要求刻意制造 unknown；unknown 人工处理与停发边界继续以既有离线用例为验证依据。本次授权范围止于 Phase 4。
 
-Mac Phase 5 has not passed G1/G2. The Mac Phase 6 service/workbench is not available; CLI explicitly rejects `mac_db serve`. Windows acceptance above remains unchanged. See [Mac setup](mac-probe.md).
+## Mac Phase 6 验收
+
+设置 `WECHAT_ADAPTER=mac_db` 后使用同一 `serve` 入口。概览显示 macOS/mac_db、文本能力及 `ui_checks_degraded` 提示；Mac 不适用的 Windows UIA/OCR 开关禁用，设置 API 也拒绝修改。诊断展示实际辅助功能/屏幕录制/锁屏状态，环境可用与已经连接分别展示。
+
+2026-10-22 用户确认 Mac/降级提示、配置/诊断、会话/历史、dry-run/live、暂停/恢复/停止全部通过；从其他会话切回已打开的绑定独立窗、两轮正式回复、两条含 LF/emoji/长段落的固定消息完整收件及保持登录也确认通过。自动检查包括 222 项 Python 测试、前端类型/构建、Swift 自检与 Mac 干净源码安装；未自行打开页面或执行 UI 自动化。
+
+`scripts/acceptance/phase6_install_check.py --output <全新私有目录>` 按本机平台安装对应 extra，验证 CLI、Swift（仅 Mac）、stopped/dry-run HTTP 与静态资源，不连接或发送微信。Mac 已通过；Windows 本次原生安装/收发按用户选择待验证，合成兼容回归通过。严格 Mac 视觉 G1/G2 未通过。worker 已停止，服务每次重启强制 dry-run；后续阶段未启动。见 [Mac 接入](mac-probe.md)。

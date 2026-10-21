@@ -53,9 +53,15 @@ Local patches:
 - Capture backend labels match the active backend; diagnostic refresh preserves the
   selected backend. Existing diagnostic PNGs are not overwritten.
 
-Application limits: Phase 5 only, manually selected single friend, <=200 Python
-characters, single line, no control characters. OCR must reproduce the full draft
-exactly; unsupported glyphs/layouts are refused. No target navigation claimed.
+Application limits: visual mode retains <=200 characters, single-line exact OCR.
+Explicit `ax-window-db` mode supports up to 1000 Unicode scalars, including LF,
+internal spaces and joined emoji. Cc controls other than LF are refused. Clipboard
+payload and database confirmation preserve whitespace without normalization.
+Sending raises/restores the unique already-open bound independent chat, even when
+another window has focus. It does not create a closed chat window or search contacts.
+Skipped draft/occlusion checks remain explicit. Current native format evidence is
+70 characters with newlines/spaces/joined emoji and a 481-character paragraph message;
+1000/1001 boundaries are synthetic/native self-test evidence, not real message trials.
 Only an independent new exact self-sent database record can confirm a send.
 Upstream UI/already-sent reports are never delivery evidence.
 

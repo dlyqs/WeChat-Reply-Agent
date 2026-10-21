@@ -4,23 +4,23 @@
 本文件是阶段状态、实施顺序和完成条件的唯一来源；代码导航见 [overview.md](overview.md)。
 
 ~~~text
-execution mode: execute_phase_5_degraded_flow
-automatic start phase: 5
-automatic stop phase: 5 (degraded flow validation; strict G1/G2 remain separate)
-execution state: phase_5_degraded_flow_passed_worker_stopped
+execution mode: close_phase_6_degraded_mac
+automatic start phase: 6
+automatic stop phase: 6 (Mac accepted; Windows native regression deferred by user)
+execution state: phase_6_mac_passed_windows_native_pending_worker_stopped
 conversation relay: off
-current change: explicit AX independent-window + clipboard + DB confirmation; visual preflight waived by user
-last completed implementation scope: Windows phases 1-4; Mac phase 5 user-authorized degraded flow
-next implementation phase: none automatic; Phase 6 remains pending
+current change: shared service/API/workbench and ledger; explicit degraded Mac native adapter
+last completed implementation scope: Windows phases 1-4; Mac phases 5-6 user-authorized degraded flow
+next implementation phase: none automatic; Phase 7 requires a new request
 windows foundation: wechatauto-replica 1.2.7.0
 windows upstream commit: d322c4a9b1124228820bab363e5676016f188fc6
 macOS reference: acmerfight/0a01249ef72970d07a2603dbb629e80f
 macOS reference revision: c98dbb10cf23c30e83d5d744905101b0880887a0
 ~~~
 
-本轮执行以 [Phase 5 本轮范围调整](#phase-5-本轮范围调整2026-10-22) 为准。旧交接清单及严格验收条件保留，不能用降级流程结果改写严格 G1/G2；不自动进入 Phase 6。
+本轮执行以 Phase 6「本轮范围与完成记录」为准：用户确认本机 Mac 全部验收通过，并明确将 Windows 真实回归留待验证。Phase 5 的降级授权继续适用；旧交接清单及严格验收条件保留，不能用降级流程结果改写严格 G1/G2；不自动进入 Phase 7。
 
-v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。本轮按用户最新授权完成 Phase 5 降级流程：既有密钥/读取复验、自然固定发送与一次收件、两轮真实 Agent 回复及 DB 确认均通过；用户接受实际轮数并要求标记通过。严格视觉 G1/G2 仍未完成，Phase 6 未进入。
+v5 在 v4 的 Phase 4 后插入 Phase 5「macOS 原型验证」和 Phase 6「macOS 与 Windows 已有功能对齐」；原 Phase 5/6/7 分别顺延为 Phase 7/8/9。Windows Phase 1–4 的完成事实、用例和私有报告保持原样。Mac Phase 5 降级流程已通过；Phase 6 正式服务、工作台、绑定独立窗导航、多行/emoji/近长度上限发送和两轮真实 Agent 回复已通过本机及用户验收。Windows 合成回归通过，真实回归延期；严格视觉 G1/G2 仍未完成。
 
 ## 1. 交付目标与范围
 
@@ -68,7 +68,7 @@ doctor 必须保持只读：不构造会取钥或热激活的对象，不调用�
 
 参考版本固定为 Gist revision `c98dbb10cf23c30e83d5d744905101b0880887a0`（2026-10-20，MIT）；实施前核对文件哈希和完整许可。重点参考读取/取钥代码、Swift 界面桥和 `send_verified.py`；上游自测与本项目验收分开记录。
 
-上游记录为 macOS 15.6.1 / Apple Silicon / 微信 4.1.15；本机现状为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115，App Store），取钥与新消息读取已通过，发送仍在验收。旧 AX 探针在此组合找不到消息列表与输入框，保留作历史；新通道不以这些 AX 子控件可见为前提。
+上游记录为 macOS 15.6.1 / Apple Silicon / 微信 4.1.15；本机现状为 macOS 27.0.1 / arm64 / 微信 4.1.15（270115，App Store），取钥、新消息读取及降级模式真实收发已通过。旧 AX 探针在此组合找不到消息列表与输入框，保留作历史；新通道不以这些 AX 子控件可见为前提。
 
 | 项目 | Mac 方案与边界 |
 | --- | --- |
@@ -105,8 +105,8 @@ Mac 在 Phase 5 按上述固定 revision 选择内化必要源码到 `third_part
 | --- | --- |
 | third_party/wechatauto_replica/ | 上游读取、解密、WAL、UIA/OCR/键鼠能力与最小修复 |
 | adapters/wechat/replica.py、replica_bridge.py | 懒加载、账号绑定、字段规范化、原生调用、发送结果映射与能力报告 |
-| third_party/wechat_mac_toolkit/、adapters/wechat/mac_db*.py（待新增） | Mac 只读数据库/取钥辅助与原生界面桥、MacAdapter/profile/能力和三态发送；与 Windows 原生包隔离 |
-| adapters/wechat/base.py、domain/ 平台契约（待扩展） | 统一连接/关闭、绑定身份、源库文件身份、能力与报告依据；运行服务不直接理解第三方 profile 或目录 |
+| third_party/wechat_mac_toolkit/、adapters/wechat/mac_db.py、mac_bridge.py | Mac 只读数据库/取钥辅助与原生界面桥、MacAdapter/profile/能力和三态发送；与 Windows 原生包隔离 |
+| adapters/wechat/base.py、binding.py、domain/ 平台契约 | 统一连接/关闭、绑定身份、源库文件身份、能力与报告依据；运行服务不直接理解第三方 profile 或目录 |
 | domain/ | 与第三方对象解耦的会话、消息、Agent、发送和运行契约 |
 | storage/ | 应用 SQLite、inbox/outbox、游标、上下文、记忆、知识与运行记录 |
 | runtime/ | 轮询、基线、事务入库、合并/队列、暂停代数、单实例与唯一 GUI 执行通道 |
@@ -163,7 +163,7 @@ Mac 新增集成约束：
 - Gist 的 UI 核验和服务器 ID 可作辅助证据；应用成功依据与 Windows 一致，必须有发送前水位、同会话新增本人记录和全文匹配。只出现绿色气泡、非零 ID 或旧同文记录都不足以单独确认；多条候选无法归因时保持 unknown。
 - 将原生桥操作 ID 固定映射到 outbox_id；共享同一私有状态目录和互斥锁。已有 prepared/dispatching/unknown 不换 ID、不换发送快捷键重试，人工 resolve 只记结论。
 - 进程/窗口/账号必须一致；应用前台或背景截图成功不能证明目标主窗可接收输入。遮挡、布局变化、同名联系人或登录窗不能确认时停发，数据库回读不能替代发送前目标核验。
-- 当前 Prototype 读取 Replica profile 字段，RuntimeService 直接拼库路径并限定 v4 Replica 报告。Phase 5 只提取原型必需契约，Phase 6 再完成正式运行服务解耦；不伪造 Replica profile、报告或降低 confidence/身份要求来接入 Mac。
+- Phase 6 已提取 RuntimeBinding 与适配器契约，Prototype/RuntimeService 不再读取 Replica profile 字段或拼原生库路径；报告检查、缓存和错误映射归属各平台适配器。Windows 保留原绑定指纹与受限 v4 报告兼容，Mac 使用本机匹配依据，不伪造 Replica profile 或报告。
 
 ## 5. 应用运行与数据契约
 
@@ -182,7 +182,7 @@ Mac 新增集成约束：
 | `replay --suite <name> --output <json>` | 合成输入回放，结果标为 offline，不接触微信 |
 | `verify` / `package --video <path>` | 检查/打包已存在的真实产物，不启动客户端、不上传或推送 |
 
-Windows 已实现 doctor/connect/probe/resolve/prototype/serve。Mac 已实现 mac_db doctor/connect/probe/resolve/prototype、独立 mac-bootstrap 和 G1 报告识别，但真实发送与 G1/G2 未过；取钥和新消息读取已通过。Mac serve 属于尚未进入的 Phase 6，当前明确拒绝。旧 mac_ax 只有历史探针。replay/verify/package 仍是后续目标，不能标为已可执行。Phase 3–4 干净安装验证脚本不是 Phase 9 的 verify/package 命令。
+Windows 与 mac_db 均已实现 doctor/connect/probe/resolve/prototype/serve；Mac 另有独立 mac-bootstrap。Mac 降级正式服务要求显式 independent/ax-window-db profile、本机匹配且用户接受的 Phase 5 降级报告及原生固定发送回执，无未决原生操作；默认 visual 仍要求严格 G1/G2，不借用 Windows 报告。旧 mac_ax 只有历史探针。replay/verify/package 仍是后续目标，不能标为已可执行。干净安装验证脚本不是 Phase 9 的 verify/package 命令。
 
 | 配置组 | 目标字段 |
 | --- | --- |
@@ -227,12 +227,12 @@ SendResult 保留 verified_sent / not_sent / unknown：
 | Phase 3 | 配置、持久化与运行控制 | 必需 | completed | 配置/迁移/单线程运行控制、故障回放及 Windows 干净目录锁安装通过 |
 | Phase 4 | 本地 API 与工作台 | 必需 | completed | API/React 工作台/serve、自动检查及用户确认的界面/真实微信状态同步验收通过 |
 | Phase 5 | macOS 固定收发与最小 Agent 原型 | 必需，新增 | completed_degraded | 191 项测试及 Swift 自检通过；固定自然对话一次收件、真实模型两轮及 DB 确认通过，用户接受实际轮数并要求标通过；worker 已停止，严格 G1/G2 未过 |
-| Phase 6 | macOS 与 Windows 已有应用功能对齐 | 必需，新增 | pending | Phase 5 Mac G1/G2；完成正式服务/发送/工作台接入及 Windows 回归 |
+| Phase 6 | macOS 与 Windows 已有应用功能对齐 | 必需，新增 | completed_degraded | Mac 正式服务/工作台、窗口导航及自然对话收件经用户确认通过；222 项测试、构建及 Mac 干净安装通过；Windows 合成回归通过，真实回归按用户决定待验证；严格 Mac G1/G2 未过 |
 | Phase 7 | 知识检索与长期记忆 | 必需，原 Phase 5 | pending | Phase 6；在两平台共用的 Agent/API 上扩展 |
 | Phase 8 | 业务工具、文件与语音入口 | 可选，未选择，原 Phase 6 | pending | Phase 7；未选择则记录不纳入并转 Phase 9 |
 | Phase 9 | 双平台集成回归、录像与交付 | 必需，原 Phase 7 | pending | Phase 6/7，以及已选择的 Phase 8 项 |
 
-原授权为 Phase 5–6；本轮用户将目标调整为 Phase 5 降级流程跑通，暂不考虑最终完成度。默认原型仍要求 G1；只有显式降级 profile 与 `--allow-degraded-mac-ui` 同时启用时，允许流程验证绕开严格视觉 G1。此例外不放行 Phase 6，不改变 Windows，也不授权 Phase 7–9。
+原授权为 Phase 5–6；用户先接受 Phase 5 降级结果，再明确要求继续 Phase 6，最终确认 Mac 全部验收通过、Windows 真实回归待验证。默认原型仍要求 G1；显式降级 profile 与 `--allow-degraded-mac-ui` 同时启用时允许降级原型。正式服务则要求匹配的已接受 Phase 5 降级证明和原生回执。该例外不改变 Windows 门禁，不将严格 G1/G2 标通过，也不授权 Phase 7–9。
 
 ### Phase 1：内化微信控制基座并通过 G1
 
@@ -440,21 +440,22 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 任务：
 
-- [ ] 收敛适配器的连接/关闭、绑定身份/联系人、源库文件身份、能力和初始化结果接口；把 Replica profile 字段、db_storage 路径、缓存清理与平台错误映射移回各自适配器，RuntimeService 使用统一契约。
-- [ ] 按平台/基座、账号代数/绑定、微信版本识别 G1/G2，验证报告与本机环境一致；保留 Windows v4 原始报告及其受限兼容识别，不改写历史报告、不复制 Windows passed 到 Mac、不仅放宽版本字符串检查。
-- [ ] 保留 Windows 既有账本、消息 ID、游标、上下文和 unknown；新增 Mac 元数据可迁移、可恢复。账号、进程寿命、源库替换/代数及应用账本变化仍拒绝继续，同一客户端只允许一个执行通道。
-- [ ] 将人工预选限制扩展到与 Windows 相同的已绑定单聊定位/导航：当前不在目标聊天时可在发送前导航并重新核验，歧义/同名拒绝，不要求用户为每条正常回复手动切换。一个测试好友范围不扩展为多账号/群聊。
-- [ ] 对齐模型输出长度设置及发送行为；验证中文/英文、标点、emoji、空格/换行和接近长度上限的内容。应用统一根据能力校验，不能静默截断、拆分或丢空白；无法精确核验的内容在发送前拒绝并明确限制。仍仅支持 200 字单行时不能标全量文字能力对齐，差异须列入待完成项。
-- [ ] 接通正式 serve 的停止/dry-run 默认值、显式开始、暂停/恢复/停止、代数取消、限流/合并、崩溃恢复与 unknown 人工处理；原生桥超时/退出受控，模型迟到结果不得穿过发送边界。
-- [ ] 复用概览/会话/设置及诊断 API，展示实际平台/基座、权限、连接、能力与初始化状态；Windows UIA 开关等不适用项标明。前端只做类型/构建/必要逻辑验证，由用户打开工作台验收。
-- [ ] 完成 Mac extra/锁、SQLCipher 定位与架构检查、Swift 桥可复现构建、原生辅助进程关闭及私有缓存/权限策略；两平台分别从干净源码目录安装。更新说明/许可，并回归 Windows 现有 CLI、服务和真实收发。
+- [x] 收敛适配器连接/关闭、绑定联系人、源库身份、能力、验收依据、缓存和错误接口；RuntimeService 使用 RuntimeBinding，不理解原生目录。
+- [x] 按平台/基座、版本和本机绑定识别报告；保留 Windows 原指纹和受限 v4 兼容；Mac 显式降级服务核验既有用户接受证明及原生回执，严格门禁保持独立。
+- [x] 保留 Windows 消息/游标/上下文和 unknown，新增平台元数据；校验源文件及盐、应用账本，所有原生操作在唯一执行线程关闭。
+- [x] 自动抬高/恢复已打开且唯一匹配绑定标题的独立聊天窗；发送前复核联系人标题与原生 username，同名/变化拒绝。支持从其他会话切回；不创建关闭的独立窗或搜索联系人。
+- [x] 显式降级通道支持 1000 Unicode 标量、LF、emoji 和空格；模型输出保留原空白，发送前按能力拒绝超长/不支持字符，不拆分截断。默认回复上限 500；实际 70/481 字自然段落发送及收件完整。
+- [x] 接通 stopped/dry-run 默认、开始/暂停/恢复/停止、代数取消、限流和 unknown；API 人工处理同步应用/原生回执，仅记结论。睡眠/时钟跳变要求重连。
+- [x] API/工作台展示平台、基座、降级能力和权限；Mac 禁用 Windows UIA/OCR 配置。前端仅类型/构建检查，用户人工验收通过。
+- [x] Mac extra/锁、SQLCipher/Swift 构建、自检、干净源码安装及无账号 stopped/dry-run HTTP 验证通过，更新平台说明/来源；Windows 合成兼容回归通过。
+- [ ] Windows 本次干净安装及真实 CLI/serve/收发回归：用户明确延期，not_tested；历史通过记录保留，不代替本次原生回归。
 
-对齐清单（均待本阶段验证）：
+对齐清单（Mac 降级模式的本轮结果；严格差异见下文）：
 
 | 能力 | Windows 已有依据 | Mac 达标条件 |
 | --- | --- | --- |
 | 绑定、消息读取与去重 | P01-02/03/05、P02-03/04 | 同等身份强度、稳定事件、增量/本人过滤；不以 OCR 快照冒充消息 |
-| 目标定位与单次发送 | Replica send_text_once、P01-04 | 可定位已绑定单聊，目标/草稿/主窗/焦点/全文检查，发送后不回退第二路径 |
+| 目标定位与单次发送 | Replica send_text_once、P01-04 | 已打开的绑定独立窗自动切回，目标/焦点复核；草稿/粘贴全文/遮挡按用户授权未验证，单次发送不回退第二路径 |
 | 发送确认与恢复 | ReplicaAdapter.send_text、outbox | 新记录水位+本人/会话/全文，三态及 unknown 停发，同操作 ID 不重试 |
 | Agent 与运行节奏 | P02-01–05 | 相同上下文/预算、合并/串行/限流/上限，无自循环 |
 | 生命周期与历史 | P03-01–04 | 原位迁移、暂停代数、停止等待、重启基线及未决发送恢复 |
@@ -472,7 +473,23 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 完成条件与证据：对齐表逐项有证据，P06-01–06 必需项通过，Mac 工作台人工验收通过，Windows 回归无新增阻断；Mac 报告 `.local/acceptance/mac/phase-6/report.json`，Windows 回归 `.local/acceptance/windows/phase-6/report.json`。能力差异仍阻断目标功能时保持未完成，不靠降低公共约束或缩小 Windows 功能通过。
 
-完成记录：未开始。Phase 5 Mac G1/G2 未通过，没有进入正式服务/导航/工作台对齐；Windows 本次原生回归与 Mac 工作台人工验收均 not_tested。
+### Phase 6 本轮范围与完成记录（2026-10-22）
+
+用户明确要求继续 Phase 6，并延续 Mac 的视觉降级授权；本机工作台、导航、实际收件和保持登录全部由用户确认通过。用户选择先完成本机 Mac，Windows 真实回归标待验证。本轮据此记为 `completed_degraded`，不是严格双平台验收完成；上面的原始严格完成条件及 Phase 9 最终条件继续保留。
+
+| 用例 | 本轮状态 | 证据与限制 |
+| --- | --- | --- |
+| P06-01 | passed | 统一绑定/能力契约，错平台/版本/来源/绑定拒绝；Windows 原指纹及受限 v4 兼容、无原生依赖导入合成回归 |
+| P06-02 | passed | 旧账本兼容、源盐/文件与应用库变化、进程校验、时钟间隔停发合成验证；本机原生绑定/19 源库预检 |
+| P06-03 | passed_degraded | 用户确认从其他聊天自动切回绑定独立窗、收件完整且仍登录；70 字混合格式、481 字多段落均精确 DB 确认。1000 字边界为合成/Swift 自检；视觉检查未验证，严格 G2 未通过 |
+| P06-04 | passed | 本机 HTTP dry-run 全生命周期及两轮正式 live；暂停迟到模型、重启恢复/unknown、原生人工处理和限流为合成回归 |
+| P06-05 | passed | API/设置/权限及构建通过；用户确认 Mac/降级提示、诊断、历史、live 与暂停/恢复/停止全部通过 |
+| P06-06 Mac | passed | 本机干净源码按锁安装、Swift 构建/自检、CLI 与 stopped/dry-run HTTP；绑定环境真实收发及人工核对 |
+| P06-06 Windows | not_tested | 合成回归 passed；本次原生安装/真实收发按用户决定 deferred_by_user |
+
+222 项 Python 测试、Ruff、前端类型/构建、Swift 自检通过，实现提交 `95cb081`。正式服务实际新增两轮 Agent 回复（既有两轮 Phase 5 保持独立），均 `verified_sent/local_db_confirmed`；另两条固定格式消息也获对端完整收件确认。用户验收后主动停止 worker；未运行到三条上限，不记为自动上限停止。最终服务已重启为 stopped/dry-run，只读诊断健康、4 条历史 outbox 保留；重启后零发送，不自动实施 Phase 7。
+
+私有汇总：`.local/acceptance/mac/phase-6/report.json`、`.local/acceptance/windows/phase-6/report.json`；分项 `acceptance-precheck.json`、`service-lifecycle.json`、`send-format.json`、`send-near-500.json`、`workbench-human.json` 和 `clean-install-final/report.json`。固定发送沿用 probe 的 Phase 5 报告结构，归属本次 Phase 6 格式矩阵，不改写原始回执。
 
 ### Phase 7：知识检索与按联系人隔离的长期记忆
 
@@ -548,12 +565,12 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 ## 8. 续做与旧版本衔接
 
-1. 下一次先读本计划和 overview，再核对对应平台接入说明、提交、私有报告与实际环境。overview/README 中尚未随实施更新的 Windows-only 描述是代码现状，不代表本计划新增 Mac 阶段已完成。
-2. 下一入口以 Phase 5「本轮范围调整」及其实际结果为准。独立窗和 Apple 系统选择器均已实测黑屏；当前按用户授权验证显式降级流程，不重复无依据的捕获重试。要恢复严格验收，仍需可核验输入界面及对应稳定性证据；不安装旧 wxauto4、不猜旧 AX 消息控件、不重复取钥。
-3. Windows Phase 1–4/G1/G2/人工验收保持 completed；Mac G1/G2 在 Phase 5 独立形成。Phase 5 原型先受对应 G1 检查控制；Phase 6 正式服务仅在本机匹配的 G1/G2 有效后开始，不能借用另一平台报告。
+1. 下一次先读本计划和 overview，再核对对应平台接入说明、提交、私有报告与实际环境。本轮收尾停在 Phase 6；Phase 7 需要新请求。
+2. 当前以 Phase 6 本轮完成记录为准；Phase 5 旧交接仅作历史。独立窗和 Apple 系统选择器均已实测黑屏，不重复无依据的捕获重试。恢复严格验收仍需可核验输入界面及对应稳定性证据；不安装旧 wxauto4、不猜旧 AX 消息控件、不重复取钥。
+3. Windows Phase 1–4/G1/G2/人工验收保持 completed，本次原生回归延期。Mac 默认 visual 仍要求本机严格 G1/G2；显式 independent/ax-window-db 服务要求本机匹配且用户接受的降级证明及固定发送原生回执，不能借用另一平台报告。
 4. 编号映射：v4 Phase 1–4 不变；v4 Phase 5（知识记忆）→v5 Phase 7，v4 Phase 6（可选增强）→v5 Phase 8，v4 Phase 7（交付）→v5 Phase 9。更早的 18 阶段已在 v4 收敛；按主题继续映射到本版，不恢复旧执行顺序。
 5. 新增用例使用 P05/P06；原尚未实施的知识/增强/交付用例顺延为 P07/P08/P09。任何既存旧编号/报告保留原 plan_version、日期与含义，用「版本+平台+阶段+用例」识别，不覆盖或改写旧测试结果。
-6. 本次已授权实施 Phase 5–6，已执行 Phase 5 软件和首次取钥。后续按 Phase 5→6→7→已选择的 8→9 推进，原型失败先解决本阶段阻塞；Windows 已通过不豁免共享层改动后的回归。
+6. 本次已授权的 Phase 5–6 Mac 降级范围已完成。后续新请求可继续 Phase 7 或补齐严格 Mac/Windows 原生回归；延期项保留，Windows 历史通过不豁免共享层改动后的真实回归。
 7. v5 实施记录采用实际 platform/foundation；Windows v4 原始报告通过明确兼容映射及本机绑定校验识别，Mac 只能使用自己的 v5 报告。每次收尾同步 overview/README/接入说明，避免计划目标和已实现能力混写。
 8. 运行时遇到上游缺陷只做必要且可追溯的补丁；改变产品范围、控制路线或支持声明须明确更新本计划。
 
@@ -561,4 +578,4 @@ API 至少包括 GET /api/health、GET /api/runtime、POST /api/runtime/{start,p
 
 Phase 1–7 与 Phase 9 的必需任务、Windows 和 Mac 各自的 G1/G2、Phase 6 对齐验收、两平台工作台人工验收和真实视频齐备；Phase 8 仅对明确选择的项目验收。应用可分别从干净 Windows/Mac 源码包按平台步骤安装启动，原生读取/发送隔离，Agent/知识/记忆/状态/API/UI 接通，发送不确定时停止，许可证和来源清楚，交付无秘密与私聊。仅通道库、固定会话短文本原型、离线截图、模型控制台或阶段文档不能作为最终完成。
 
-当前交付事实为 Windows Phase 1–4 已完成，Mac 已有密钥/读取已复验，降级固定自然对话发送及对端一次收件已确认，实际两轮 Agent 回复及 DB 确认通过，用户接受并要求标通过，worker 已停止。严格视觉检查、稳定性与 G1/G2 未通过，Phase 6 未开始。本轮 Phase 5 降级流程已标记 passed，不自动实施后续阶段。真实收发采用自然日常对话、单好友低频、至少 30 秒发送间隔、单次最多 3 条回复。
+当前交付事实为 Windows Phase 1–4 已完成，Mac Phase 5–6 在用户授权的降级范围内通过；正式服务/API/工作台、已打开独立窗导航、格式消息及两轮新增 Agent 回复均经本机/人工核对，worker 已停止。严格 Mac 视觉 G1/G2 未通过；Windows 本次真实回归按用户选择待验证，不记全应用最终完成，不自动实施 Phase 7。真实收发采用自然日常对话、单好友低频、至少 30 秒发送间隔、单次最多 3 条回复。

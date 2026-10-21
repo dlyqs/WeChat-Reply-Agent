@@ -1,10 +1,11 @@
-# macOS DB 原型接入（Phase 5）
+# macOS DB 接入与工作台（Phase 5–6）
 
 2026-10-22。状态以 [执行计划](wechat-agent-plan.md) 为准。
-当前实现与离线验证已落盘；严格 Mac G1/G2 未通过，Phase 6 未进入。
-本轮用户授权跳过 Mac 的截图/空草稿/全文核验，先以降级模式跑通流程。
-新版剪贴板自然对话固定发送及一次收件已确认，原有 LangGraph 实际完成两轮回复并逐条 DB 确认。
-用户接受当前轮数并要求标记通过：降级流程 passed，worker 已主动停止，未记录为三轮或自动上限停止。
+Phase 5–6 已在用户授权的降级范围内通过，严格 Mac G1/G2 未通过。
+用户授权跳过 Mac 的截图/空草稿/粘贴全文/遮挡核验；正式服务复用共享账本、API 和工作台。
+Phase 5 原型两轮回复保持原记录；Phase 6 新增两轮正式回复、两条自然格式消息精确 DB 确认，
+用户确认工作台、切窗、完整收件及保持登录全部通过。worker 已停止，服务重启默认 stopped/dry-run。
+Windows 本次合成兼容回归通过，真实原生回归按用户选择待验证；不自动进入 Phase 7。
 历史固定发送后曾出现安全退登；持久安全锁及 unknown 停发仍生效。
 
 窗口/输入/截图问题的后续检索见 [Mac 自动化调研](mac-automation-research.md)。
@@ -34,7 +35,7 @@
 不截图、不执行 OCR，**空草稿、粘贴全文和遮挡未核验**；报告明确 `ui_checks_degraded=true`。
 异常后仍遵循 unknown 不重试和持久安全锁，人工 resolve 不重发。
 
-仅该 profile 配合显式原型参数可运行流程验证：
+该 profile 配合显式原型参数可运行流程验证：
 
 ~~~sh
 uv run wechat-agent prototype --mode dry-run --duration 180 --max-replies 1 \
@@ -43,9 +44,36 @@ uv run wechat-agent prototype --mode live --duration 900 --max-replies 3 \
   --allow-degraded-mac-ui --output .local/acceptance/mac/phase-5/degraded-agent-live.json
 ~~~
 
-这不通过严格 G1/G2，也不开放 Mac serve。默认 `visual` 仍沿用原门禁和以下视觉检查。
+这不通过严格 G1/G2。Phase 6 已开放同一 `serve` 入口，额外验收依据见下文；默认 `visual` 仍沿用原门禁和以下视觉检查。
 实际收发使用自然日常对话；首次监听建立基线，早于基线的来信不会触发回复。
 下文的 bootstrap、历史故障及严格视觉要求继续保留作参考。
+
+### Phase 6 正式服务
+
+~~~sh
+uv run wechat-agent serve
+~~~
+
+本机配置须显式选择 `WECHAT_ADAPTER=mac_db` 和上述降级 profile。服务启动不连接微信，
+每次强制 stopped/dry-run；手动访问 `http://127.0.0.1:8765`，在工作台开始。
+开始前要求本机匹配的 `.local/acceptance/mac/phase-5/degraded-flow.json`、
+`degraded-fixed-send.json` 及其成功原生回执：平台/来源 revision、客户端版本/构建、
+绑定和源库指纹一致，报告为用户已接受的降级流程。未决原生操作先停发，不调用模型。
+DATA_DIR 可配置，上述路径以默认 `.local` 为例；不能复制其他账号或 Windows 报告放行。
+
+发送前自动抬高/恢复已打开的唯一绑定独立窗，复核 DB 中标题与原生 username；
+从微信其他会话或其他前台窗口切回无需逐条人工操作。独立窗必须保持打开，
+不搜索联系人或创建关闭的独立窗。标题歧义/变化、窗口缺失、焦点或进程变化均拒绝。
+
+降级模式支持最多 1000 Unicode 标量，允许 LF、中文/英文、标点、emoji（含组合序列）和空格；
+保留模型输出空白，不截断、不拆分。拒绝其他控制字符、无效代理字符、空白或超长输出。
+应用默认 `MAX_REPLY_CHARACTERS=500`，开始时检查不超过通道能力；本机实际发送验证为
+70 字混合格式及 481 字多段落自然对话，DB 全文与用户完整收件均通过，1000 字边界为合成/Swift 自检。
+
+暂停/恢复/停止、限流、unknown 和迟到结果取消共用正式服务；恢复重建基线。
+API 人工处理同步原生 journal 和应用 outbox，仅记结论不重发。源库文件/盐或账本变化、
+睡眠/时钟异常间隔停止并要求重连。诊断展示实际权限，设置页标明 Windows UIA/OCR 不适用。
+详见 [API 与工作台](api-workbench.md)。
 
 ### 默认视觉模式
 
@@ -62,8 +90,8 @@ Windows extra 不安装 Mac 原生依赖，Mac 不加载 Replica 原生依赖。
 启动记录基线，不回复启动前历史；进程、账号目录、客户端版本或源库文件/盐变化会停发。
 新建/替换源库需要重新核实绑定，不承诺热换库、停机补收或全格式兼容。
 
-发送只支持人工预选的唯一测试好友、已校准输入区域、单行且不超过 200 字。
-应用保留 Windows 原有的 500 字默认上限；Mac 原型应单独配置 `MAX_REPLY_CHARACTERS=200`。
+默认视觉通道只支持人工预选的唯一测试好友、已校准输入区域、单行且不超过 200 字。
+应用保留 500 字默认上限；视觉通道须单独配置 `MAX_REPLY_CHARACTERS=200`，降级通道可保持 500。
 不能精确 OCR 核验的文字、空白/布局、控制字符或超长输出拒绝，不能截断/拆分。
 live 发送前自动激活已绑定的微信进程，并通过 AXRaise 抬高唯一匹配校准尺寸的主窗口；
 必要时恢复该主窗的最小化状态。它不会更改其他应用或搜索联系人，也不是永久悬浮置顶。
@@ -77,7 +105,7 @@ macOS 27 的透明 Dock 可能被系统报告为整屏窗口；仅当其真实 A
 使用系统剪贴板一次 Cmd+V，随后精确回读草稿，代替逐段 CGEvent Unicode 输入。
 操作结束时恢复原剪贴板；检测到用户/其他应用已复制新内容时保留新内容。
 构建自检只使用独立命名剪贴板，不触碰用户剪贴板或微信。
-该限制尚不满足 Phase 6 的导航和完整文字能力对齐，不能宣称已支持 Mac 工作台。
+上述限制属于严格视觉通道；已通过的 Phase 6 降级工作台使用前述独立窗导航与文本能力，不能借此声称视觉通道通过。
 
 outbox_id 固定映射到应用原生回执及 Swift journal，均位于同一私有 DATA_DIR。
 prepared/dispatching/unknown 不换 ID 重发；UI 成功或绿色气泡不能直接确认。
@@ -218,12 +246,12 @@ uv run wechat-agent prototype --mode live --duration 600 --max-replies 3 \
 
 默认视觉模式要求 G1；本轮显式降级模式的运行方式见上文。默认轮询 15 秒，发送至少间隔 30 秒、每分钟至多 2 次，
 单轮最多 3 条。三轮真实问答及上下文追问、逐轮对端收件后才可形成 G2。
-`serve` 的 Mac 接入属于 Phase 6，当前明确拒绝启动该未完成路径。
+`serve` 的 Mac 接入已在 Phase 6 完成；视觉门禁和显式降级验收分别检查，不改写严格 G1/G2。
 
 ## 离线验证与私有资料
 
-本轮 191 项 Python 测试、Ruff、Swift 构建/自检和 wheel/sdist 构建通过。
-无屏幕录制权限时降级 health 可用；未明确选择降级 profile/CLI 参数时不能绕过严格 gate。
+Phase 6 本轮 222 项 Python 测试、Ruff、Swift 构建/自检、前端类型/构建和 Mac 干净源码安装通过。
+无屏幕录制权限时降级 health 可用；未明确选择降级 profile（原型另需 CLI 参数）不能绕过严格 gate。
 窗口模式/降级状态进入私有绑定指纹、原生回执、发送及原型报告，Windows 路线保持原有要求。
 
 只读捕获对照可复现为（先人工将正确窗口放到前台；脚本不激活/输入/改 profile）：
@@ -245,4 +273,6 @@ uv run python scripts/acceptance/mac_capture_check.py --window-mode independent 
 秘密、回执、用户名、正文、截图和临时副本只在私有 DATA_DIR；目录 0700、
 密钥/报告/文本 0600。不要把 `.env`、账号目录或 bootstrap 缓存加入 Git/交付包。
 临时副本在原版恢复且证据核对后可删除；保留必要故障摘要及 unknown 回执，
-不能通过清缓存解除停发。前端未修改，也没有打开浏览器或执行 CUA/Playwright。
+不能通过清缓存解除停发。前端仅类型/构建检查，没有打开浏览器或执行 CUA/Playwright。
+本轮汇总在 `.local/acceptance/mac/phase-6/report.json`，用户验收在 `workbench-human.json`，
+干净安装在 `clean-install-final/report.json`；Windows 延期说明在 `.local/acceptance/windows/phase-6/report.json`。

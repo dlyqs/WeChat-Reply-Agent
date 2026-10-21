@@ -14,6 +14,8 @@
 | adapters/wechat/replica.py | 原生账号/单聊绑定、分片消息身份、方向、并列边界游标和发送三态 |
 | adapters/wechat/replica_bridge.py | 唯一原生桥；进程账号核对、私有缓存/校准、一次发送及精确新记录回读 |
 | adapters/wechat/replica_profile.py | 私有账号/好友 profile，不用显示昵称代替原生 username |
+| adapters/wechat/binding.py、base.py | 平台无关绑定/源库身份与连接、能力、验收、关闭契约；Windows 保留原账本指纹 |
+| adapters/wechat/mac_db.py、mac_bridge.py、mac_acceptance.py | Mac 只读 DB/WAL、精确发送回读、独立窗导航及本机验收证明 |
 | agent/graph.py、llm/client.py | 最小 LangGraph、上下文预算、结构化结果和单次限时兼容模型请求 |
 | storage/database.py、migrations.py、repositories.py | 正式 SQLite 迁移、事务账本、身份约束与分页读模型；prototype.py 为兼容导出 |
 | runtime/service.py、worker.py | 单实例应用生命周期、唯一原生执行线程、代数/暂停/恢复/退出与只读诊断 |
@@ -31,6 +33,7 @@ API、React 工作台与正式运行服务已实现；serve 同源提供内置�
 ## 验证和运行纪律
 
 Windows 使用 `uv sync --locked --extra windows`；不加 Windows extra 仍可执行纯逻辑测试。
+Mac 使用 `uv sync --locked --extra mac`，另装 SQLCipher 并运行 `scripts/build_mac_bridge.py`；原生包按平台隔离。
 `uv run pytest -q`、`uv run ruff check src tests scripts`、`uv run ruff format --check src tests scripts`、`uv build`。
 源码归档包含 third_party 和运行资源；wheel 与应用源码分发的用途不同，不能单独安装主 wheel 就认为基座已带入。
 
@@ -40,8 +43,12 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
-本轮按用户最新授权先跑通 Phase 5 Mac 降级流程，严格 G1/G2 仍单独保留，不自动进入 Phase 6–9。Windows Phase 4 工作台人工验收已由用户确认通过。
+本轮按用户授权完成 Phase 6 Mac 降级服务/工作台，严格 G1/G2 仍单独保留；Windows 本次原生回归待验证，不自动进入 Phase 7–9。Windows Phase 4 工作台人工验收保持原结果。
 
-## Mac Phase 5 status
+## Mac Phase 5–6 当前状态
 
-`mac_db.py`, `mac_bridge.py`, `mac_profile.py`, `mac_bootstrap.py` and `mac_acceptance.py` implement the Mac prototype, durable native receipts and platform gates. `WindowCapture.swift` provides bounded capture/picker diagnostics; `DegradedSend.swift` adds the explicitly selected AX independent-window path without screenshots. `scripts/build_mac_bridge.py` builds all four Swift sources; `scripts/acceptance/mac_capture_check.py` records private comparison evidence without input. 191 tests, Swift self-tests and wheel/sdist builds pass. Existing keys and original-client reads were reverified. Independent-window capture remains unavailable, including the system picker; the user authorized skipping visual draft/occlusion checks. The degraded clipboard fixed send and one recipient receipt passed; the shared LangGraph/ledger completed two real natural-conversation replies, accepted by the user. The degraded flow is passed and its worker is stopped. Strict G1/G2 remain unpassed and Mac serve is unavailable. See [Mac setup](mac-probe.md).
+Mac 使用 `mac_db`、本机绑定与 Swift 原生桥；Phase 6 已复用正式 RuntimeService、账本、API 和 React 工作台。显式 `independent/ax-window-db` 模式在开始前核对本机匹配且用户接受的 Phase 5 降级证明及原生固定发送回执；默认视觉通道继续要求严格 G1/G2。
+
+独立窗捕获仍不可用，用户授权跳过截图、空草稿、粘贴全文及遮挡检查，工作台显示降级提示。自动抬高已打开的唯一绑定独立窗并复核联系人，支持从其他会话切回，不创建关闭的窗口。文字支持 1000 Unicode 标量、LF、emoji 及空格；默认回复上限 500，不静默截断。
+
+222 项测试、Ruff、Swift 自检、前端类型/构建和 Mac 干净源码安装通过。两条自然格式消息（70/481 字）及正式服务新增两轮 Agent 回复精确 DB 确认；用户确认工作台全部项目、切窗、完整收件及保持登录通过。worker 已停止，重启默认 stopped/dry-run。Windows 合成兼容回归通过，本次原生安装/收发按用户选择延期；严格 Mac G1/G2 未通过。详见 [Mac 接入](mac-probe.md) 和主计划 Phase 6 记录。
