@@ -28,11 +28,15 @@
     "No real demonstration video has been recorded or reviewed."
   ],
   "validation_details": {
-    "python_tests_passed": 240,
+    "python_tests_passed": 260,
     "service_replay_cases_passed": 12,
     "replay_mode": "offline_synthetic_only",
-    "mac_clean_install": "locked_source_install_swift_self_test_stopped_http_and_knowledge_crud",
+    "mac_clean_install": "locked_source_install_swift_self_test_stopped_http_knowledge_crud_and_builtin_base_activation",
     "video": "not_recorded",
-    "browser_automation": "not_used"
-  }
+    "browser_automation": "not_used",
+    "builtin_corpus": "5_original_fictional_northline_documents",
+    "history_clearing": "offline_redaction_deduplication_and_unresolved_send_guards_passed",
+    "model_preview": "production_graph_with_synthetic_model_no_wechat_send"
+  },
+  "workbench_redesign": "implemented_pending_human_ui_and_model_acceptance"
 }

@@ -77,6 +77,13 @@ REQUIRED = (
     "docs/delivery-checklist.md",
     "docs/acceptance-summary.json",
     "examples/knowledge/fictional-tea-shop.md",
+    "src/wechat_reply_agent/knowledge/data/northline/01 公司与品牌.md",
+    "src/wechat_reply_agent/knowledge/data/northline/02 产品手册.md",
+    "src/wechat_reply_agent/knowledge/data/northline/03 内部实测参数.md",
+    "src/wechat_reply_agent/knowledge/data/northline/04 仓储与跨境物流.md",
+    "src/wechat_reply_agent/knowledge/data/northline/05 售后与排障.md",
+    "src/wechat_reply_agent/agent/personas.py",
+    "docs/workbench-guide.md",
 )
 SECRET = re.compile(rb"(?:sk-[A-Za-z0-9_-]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)")
 

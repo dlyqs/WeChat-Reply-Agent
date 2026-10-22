@@ -81,12 +81,12 @@ Windows v5 报告核验基座 revision/版本/绑定；原 v4 报告只能结合
 
 ## Phase 7 知识与记忆
 
-新增“知识与记忆”入口。导入/删除知识、保存/忘记偏好只允许 stopped/paused/degraded，
+最初的“知识与记忆”入口现拆分为知识库和联系人记忆。导入/删除知识、保存/忘记偏好只允许 stopped/paused/degraded，
 运行时返回 `stop_before_content_change`；读接口可在运行中查看。DELETE 写请求同样需要来源头及 JSON `{}`。
 文件只读取用户选择的 UTF-8 内容，通过 JSON 传入；不接受任意服务端文件路径。总量最多 200 份/8 MB，
-单份 600 字分块并重叠 80 字，jieba 中文检索，Agent 每轮最多取 3 个来源、每个最多 220 字查询附近摘录，
+单份 600 字分块并重叠 80 字，jieba 中文检索，Agent 每轮最多取 3 个来源、每个最多 300 字的相关摘录，
 再按总输入预算丢弃旧历史/知识/偏好；预算不足为 `budget_omitted`，无命中为 `no_hits`。
-实际加入模型的来源写入 AgentResult 与执行记录，最终回复由应用附文件名和片段号；不接受模型伪造的来源标记。
+实际加入模型的来源写入 AgentResult 与执行记录；默认不附文件名到微信正文，可配置 `reply_show_sources`。不接受模型伪造的来源标记。
 无命中提示由模型系统约束明确要求，实际回复效果保留用户验证。
 
 记忆保存在同一个私有 SQLite v3，范围包括账号代数、账号引用、发送模式及联系人。
@@ -98,3 +98,34 @@ Windows v5 报告核验基座 revision/版本/绑定；原 v4 报告只能结合
 
 前端静态类型/构建、真实 API CRUD 和模型输入/预算/来源/隔离测试通过；两平台用户界面与微信回复尚未验收。
 Phase 9 的离线回放、打包及最终人工步骤见 [交付清单](delivery-checklist.md)。
+
+## Reply Studio 体验优化与扩展 API
+
+工作台分为工作概览、会话与记录、知识库、联系人记忆和设置；详见 [用户指南](workbench-guide.md)。
+新增接口沿用同源/写请求头/JSON限制，不暴露密钥，也不因页面加载而连接微信或请求模型。
+
+| 方法 / 路径 | 行为 |
+| --- | --- |
+| GET /api/setup | 只读已有本机绑定文件，返回是否就绪及已确认好友别名；不取钥/激活/连接 |
+| GET /api/dashboard | 当前可见消息/回复/执行数、偏好数、未决发送及平均模型耗时 |
+| GET /api/agent/presets | 完整日常/跨境产品客服提示词及推荐预算，不含本机密钥 |
+| POST /api/model/test | 使用当前或草稿地址/模型/密钥发送一次限时连接测试；不保存配置、不操作微信 |
+| GET/POST /api/knowledge/bases | 列表/新建知识库，含真实文档数、容量、启用状态及示例测试问题 |
+| PATCH/DELETE /api/knowledge/bases/{id} | 改名称/描述/启用状态或删除；默认 personal 库保留，停用/删除清空旧上下文 |
+| POST /api/knowledge/demo | 显式恢复并启用北线咖啡内置资料；不会改写密钥/提示词或开启真实发送 |
+| GET /api/knowledge/documents/{id} | 返回按原始重叠边界还原的文档正文 |
+| POST /api/knowledge/documents | 原 `{name,content}` 增加可选 `base_id`，默认 personal；按库关联，同一内容可被多库共用 |
+| DELETE /api/knowledge/documents/{id}?base_id=... | 只移除此知识库的关联；无其他库使用时才删除原文及FTS片段；省略base_id沿用旧全局删除语义 |
+| GET /api/knowledge/documents 或 /search | 支持可选 base_id；检索只采用已启用库，价钱/price 补充价格同义词，摘录定位最相关窗口 |
+| POST /api/agent/preview | `{question,base_id,history?}` 使用同一个 LangGraph 和真实配置模型试答；历史最多12条仅允许user/assistant；不读取联系人记忆、不落真实inbox/outbox/run、不发送微信 |
+| POST /api/history/clear | `{confirmation:"清除",scope?,conversation?,forget_memories:false}` 清全部或指定范围，必须scope/conversation同时提供 |
+| GET /api/outbox | 新增可选scope/conversation过滤，供会话页独立分页 |
+
+SQLite v4 增量新增知识库、文档关联及历史清除标识表；旧文档归入个人库，不改原生ID。
+首次准备5份默认停用的虚构示例，删除后不因重启自动恢复；明确恢复才重新添加。
+演示资料和完整提示词随 wheel/sdist/源码包内置。新默认输入预算为8192；既有 `.env` 的显式值保持优先，选择客服预设时会把推荐预算放进待保存草稿。
+
+清除只允许工作线程已结束的 stopped/paused/degraded 状态，原子清除正文/来源/短期上下文并隐藏旧行；可选忘记长期偏好。
+保留来源事件ID、outbox/input唯一关系、游标、账号绑定、尝试时间与人工处理结论，重复读取旧事件不会补发。
+有 pending/sending/unknown/paused 且未人工处理的意图时拒绝清除；不改原生操作journal/探针回执。
+此管理操作只校验应用账本文件身份，不依赖微信源库仍然存在，因此微信清空聊天或断开后仍可管理本地记录。

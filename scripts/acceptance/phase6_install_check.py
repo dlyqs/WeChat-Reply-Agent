@@ -165,6 +165,13 @@ def main(phase=6):
                 content_request("/api/knowledge/documents/" + doc["id"], "DELETE", {})
                 with urllib.request.urlopen(base + "/api/memories/contacts") as response:
                     assert json.load(response)["items"] == []
+                with urllib.request.urlopen(base + "/api/knowledge/bases") as response:
+                    bases = json.load(response)
+                    demo = next(b for b in bases["items"] if b["id"] == "northline-demo")
+                    assert demo["document_count"] == 5 and not demo["enabled"]
+                content_request("/api/knowledge/demo", "POST", {})
+                with urllib.request.urlopen(base + "/api/knowledge/search?q=NR-24B") as response:
+                    assert json.load(response)["items"]
             request = urllib.request.Request(
                 base + "/api/diagnostics",
                 data=b"{}",
@@ -194,6 +201,7 @@ def main(phase=6):
             "native_send": "not_tested",
             "ui_human_acceptance": "not_tested",
             "knowledge_memory_http": "passed" if phase == 9 else "not_tested",
+            "builtin_knowledge_base_http": "passed" if phase == 9 else "not_tested",
         },
     )
     print("clean_source_install_native_build_and_stopped_http_passed")

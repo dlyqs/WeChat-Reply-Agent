@@ -17,10 +17,11 @@
 | adapters/wechat/binding.py、base.py | 平台无关绑定/源库身份与连接、能力、验收、关闭契约；Windows 保留原账本指纹 |
 | adapters/wechat/mac_db.py、mac_bridge.py、mac_acceptance.py | Mac 只读 DB/WAL、精确发送回读、独立窗导航及本机验收证明 |
 | agent/graph.py、llm/client.py | LangGraph 输入过滤/检索/记忆/上下文/模型/校验、统一预算与单次限时请求 |
-| knowledge/store.py、memory/store.py | 手动 TXT/Markdown 导入、jieba/FTS5 来源检索；账号/模式/联系人隔离的明确偏好及查看/更正/忘记 |
-| storage/database.py、migrations.py、repositories.py | 正式 SQLite 迁移、事务账本、身份约束与分页读模型；prototype.py 为兼容导出 |
+| knowledge/store.py、demo.py、data/northline/ | 知识库分组/启停、TXT/Markdown 导入/原文预览、jieba/FTS5 相关摘录；内置虚构跨境咖啡器具公司完整资料 |
+| memory/store.py、agent/personas.py | 按联系人隔离的明确偏好；自然日常与跨境客服完整提示词预设，诚实身份及业务动作边界 |
+| storage/database.py、migrations.py、repositories.py | SQLite v4、事务账本、分页读模型、历史正文清除与去重标识保留；prototype.py 为兼容导出 |
 | runtime/service.py、worker.py | 单实例应用生命周期、唯一原生执行线程、代数/暂停/恢复/退出与只读诊断 |
-| api/、ui/、web/ | 回环/同源 API、React/TypeScript 源码和内置构建产物 |
+| api/、ui/、web/ | Reply Studio 分组设置/引导、知识库测试、联系人记忆、会话清除；同源 API 与构建产物 |
 | settings_store.py | 设置来源、校验、掩码、私有暂存与原子保存 |
 | runtime/prototype.py | 基线、事务轮询、过滤/合并、会话串行、低频发送、停止和不确定停发 |
 | scripts/acceptance/bind_replica.py | 根据明确提供的好友微信号，唯一定位账号与联系人，写私有绑定；不发送 |
@@ -46,6 +47,8 @@ unknown 不重试，CLI resolve 只记录人工已发/作废结果，不会重�
 秘密与私聊只写私有目录；日志/报告摘要没有模型正文或凭据。LangSmith tracing 在运行调用中关闭。
 
 不自行打开页面、Playwright/CUA 或 GitNexus，不创建子 agent、新会话、worktree 或自动 relay。
+
+2026-10-22 后续体验优化：已按用户新授权重构整个工作台，新增知识库/虚构跨境公司资料、完整客服提示词、只生成不发送的模型试答、模型连接测试和本地记录清除。操作步骤见 [工作台指南](workbench-guide.md)。前端仅类型/构建及静态检查，真实界面/模型效果由用户验证；没有自动清理用户现有记录、覆盖 `.env` 或操作微信。
 本轮用户授权 Phase 7–9 的实现与可自动验证部分，已实现知识/记忆、12项正式服务回放及本地源码交付工具；Phase 8 未选择。严格 Mac G1/G2、Windows 原生回归、两平台 Phase 7 用户实测及录像仍待验证。Windows Phase 4 和 Mac Phase 6 原人工验收保持原结果。
 
 ## Mac Phase 5–6 当前状态
