@@ -10,6 +10,9 @@ import {
 } from "../components";
 import { useWorkspace } from "../workspace";
 import type { Conversation, Message, Outbox, Page } from "../types";
+const messageTime = (message: Message) =>
+  message.source_created_at ?? new Date(message.observed_at).getTime() / 1000;
+
 export function Conversations() {
   const {
     dashboard,
@@ -109,14 +112,13 @@ export function Conversations() {
             (o) =>
               o.state === "verified_sent" &&
               o.reply_text === m.text &&
-              Math.abs(o.created - new Date(m.observed_at).getTime() / 1000) <
-                90,
+              Math.abs(o.created - messageTime(m)) < 90,
           ),
       )
       .map((m) => ({
         id: "m-" + m.id,
         text: m.text,
-        time: new Date(m.observed_at).getTime() / 1000,
+        time: messageTime(m),
         author:
           m.direction === "incoming"
             ? "好友"

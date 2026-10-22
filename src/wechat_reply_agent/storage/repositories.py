@@ -55,6 +55,7 @@ class Repository:
                         "direction",
                         "type",
                         "observed_at",
+                        "source_created_at",
                         "attachment",
                     )
                 },

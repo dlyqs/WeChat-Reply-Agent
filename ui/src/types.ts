@@ -52,6 +52,7 @@ export type Message = {
   direction: string;
   status: string;
   observed_at: string;
+  source_created_at?: number | null;
   type: string;
   attachment?: {
     kind: "file" | "voice";

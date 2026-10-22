@@ -51,6 +51,8 @@ class Native:
 
     def read(self, username, after=None, limit=200):
         self.note()
+        if after is None:
+            return self.rows[-limit:]
         return [r for r in self.rows if r["local_id"] > (after or {}).get("message_0.db", 0)][
             :limit
         ]
@@ -207,6 +209,41 @@ def test_mac_formal_worker_preserves_multiline_and_uses_one_native_thread(mac):
     assert len(set(mac.native.threads)) == 1
     assert mac.native.threads[0] != threading.get_ident()
     assert mac.service.snapshot()["capabilities"]["ui_checks_degraded"]
+
+
+def test_mac_startup_history_is_visible_without_model_or_old_replies(mac):
+    from wechat_reply_agent.adapters.wechat.local_media import result
+
+    mac.native.append("friend", "before startup")
+    mac.native.rows.append(
+        {
+            "database": "message_0.db",
+            "local_id": 2,
+            "create_time": 101,
+            "local_type": 34,
+            "sender_id": "friend",
+            "text": None,
+        }
+    )
+    # An unavailable old voice is still displayed, and acquisition is independent of the LLM.
+    mac.native.acquire_attachment = lambda event: result(event, reason="not_downloaded")
+    mac.service.start()
+    wait_for(lambda: mac.service.connected)
+    rows = mac.service.repo.messages("friend", mac.service.runtime.scope, 10, 0)
+    assert len(rows) == 2 and {row["status"] for row in rows} == {"baseline"}
+    assert rows[0]["type"] == "voice" and rows[0]["attachment"]["status"] == "missing"
+    assert rows[1]["text"] == "before startup" and rows[1]["source_created_at"] == 100
+    assert not mac.model.entered.is_set() and mac.native.attempts == 0
+    assert not mac.service.repo.runs(10, 0)
+    mac.native.append("friend", "new after startup")
+    wait_for(lambda: mac.native.attempts == 1)
+    mac.service.halt()
+    assert len(mac.service.repo.runs(10, 0)) == 1
+    # Reconnecting does not resurrect baseline messages as pending replies.
+    mac.service.start()
+    wait_for(lambda: mac.service.connected)
+    mac.service.halt()
+    assert mac.native.attempts == 1
 
 
 def test_mac_pause_cancels_late_model_and_resume_rebaselines(mac):

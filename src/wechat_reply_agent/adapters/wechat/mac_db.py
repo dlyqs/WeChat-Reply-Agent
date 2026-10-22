@@ -371,7 +371,23 @@ class MacAdapter:
                 if mark is None:
                     if cursor is not None:
                         raise AdapterError("cursor_binding_changed")
-                    # Baseline does not import history. New commits after this watermark remain new.
+                    # Show a bounded history without consuming any message newer than the
+                    # captured watermark. The runtime persists these events as baseline only.
+                    recent = self._bridge.read(ref.conversation_id, limit=50)
+                    recent = [
+                        row
+                        for row in recent
+                        if int(row["local_id"]) <= now["cursor"].get(row["database"], 0)
+                    ]
+                    recent.sort(
+                        key=lambda row: (
+                            int(row["create_time"]),
+                            row["database"],
+                            int(row["local_id"]),
+                        )
+                    )
+                    self.check_boundary(now, self._bridge.snapshot(ref.conversation_id))
+                    events.extend(self.normalize(ref, row) for row in recent[-50:])
                     state["sessions"][ref.conversation_id] = now
                     continue
                 self.check_boundary(mark, now)

@@ -55,6 +55,10 @@ class Bridge:
             if after is None
             else [r for r in self.rows if r["local_id"] > after.get(r["database"], 0)]
         )
+        if after is None:
+            return sorted(rows, key=lambda r: (r["create_time"], r["database"], r["local_id"]))[
+                -limit:
+            ]
         return [
             r for name in self.salts for r in [x for x in rows if x["database"] == name][:limit]
         ]
@@ -147,6 +151,36 @@ def test_baseline_paged_same_second_same_text_and_transactional_cursor(setup):
     last, _ = adapter.poll_events(cursor2)
     assert len(more) == 200 and len(last) == 3
     assert not ({e.event_id for e in events} & {e.event_id for e in more})
+
+
+def test_mac_startup_loads_recent_history_but_keeps_incremental_watermark(setup):
+    _, adapter, bridge = setup
+    bridge.rows = [row(i) for i in range(1, 81)]
+    history, baseline = adapter.poll_events()
+    assert len(history) == 50
+    assert [event.local_id for event in history] == list(range(31, 81))
+    replay, _ = adapter.poll_events(baseline)
+    assert replay == []
+    bridge.rows.append(row(81, text="new"))
+    fresh, _ = adapter.poll_events(baseline)
+    assert [event.local_id for event in fresh] == [81]
+
+
+def test_mac_message_arriving_during_history_load_remains_new(setup, monkeypatch):
+    _, adapter, bridge = setup
+    bridge.rows = [row()]
+    original = bridge.read
+
+    def concurrent_read(username, after=None, limit=200):
+        if after is None:
+            bridge.rows.append(row(2, text="arrived after watermark"))
+        return original(username, after, limit)
+
+    monkeypatch.setattr(bridge, "read", concurrent_read)
+    history, baseline = adapter.poll_events()
+    assert [event.local_id for event in history] == [1]
+    fresh, _ = adapter.poll_events(baseline)
+    assert [event.local_id for event in fresh] == [2]
 
 
 @pytest.mark.parametrize(

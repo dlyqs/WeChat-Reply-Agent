@@ -132,7 +132,8 @@ export const reasonText = (value: string): string =>
   (
     ({
       reply_limit: "本次已完成3条回复，点击开始可继续下一轮。",
-      baseline_recorded: "已连接，正在等待好友发来新消息。",
+      baseline_recorded:
+        "已连接，可在“会话”查看已有消息；正在等待好友的新消息。",
       start_required: "设置完成后，即可开始处理新消息。",
       running: "正在处理好友的新消息。",
       stopped: "助理已停止，历史记录和设置已保存。",
