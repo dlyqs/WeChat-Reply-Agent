@@ -14,6 +14,11 @@ DB verification are implemented in the application, not delegated to that script
 
 Local patches:
 
+- Reader exposes only file name/size metadata for type-49 file messages, including
+  bounded zstd XML parsing and composite type codes. Raw XML/media credentials remain
+  omitted. The application separately reads local resource/voice tables and stores
+  private copies; media is never sent to the text model or downloaded through the UI.
+
 - Reader uses `zstandard` on Python 3.12/3.13 (bounded decompression).
 - SQLCipher loading also verifies `cipher_version` rather than accepting plain SQLite.
 - Reader queries run on active read-only SQLCipher connections, including committed WAL;

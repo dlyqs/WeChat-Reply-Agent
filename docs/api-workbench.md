@@ -10,6 +10,13 @@ Phase 3–4、6–7 实现说明，2026-10-22。阶段状态以 [主计划](wech
 
 错误统一为 `{code, message, trace_id}`，不返回输入值、异常堆栈、完整模型 prompt、密钥、上游原始对象或隐藏思维链。会话正文和模型最终回复仅在专用记录接口中返回给本机工作台。
 
+消息接口中的 `type` 支持 `file`、`voice`，`attachment` 提供 `kind/status/name/byte_size/format/reason/checked_at`。
+`source_created_at` 为微信原始消息时间（秒），没有原始时间时前端回退到 `observed_at`。
+Mac 每次开始/恢复加载每个已选好友最近50条启动基线消息，仅展示和获取附件，不参与自动回复。
+附件状态为 `pending/available/missing/error`；不向前端返回附件绝对路径。获取只在原有工作线程中进行，
+每轮最多5条、同条至少间隔30秒；记录状态仍为 `filtered`（或原 `baseline`），不进入 LLM。
+定位接口用已有消息 ID 查账本并校验应用私有附件目录，适用于运行中和停止后。
+
 | 方法 / 路径 | 内容 |
 | --- | --- |
 | GET /api/health | 应用可用性、实际基座及运行摘要；不检查/初始化原生微信 |
@@ -20,6 +27,7 @@ Phase 3–4、6–7 实现说明，2026-10-22。阶段状态以 [主计划](wech
 | POST /api/runtime/stop | 等待当前调用结束并停止 |
 | GET /api/conversations | limit（1–100，默认50）、offset；返回 items/limit/offset |
 | GET /api/conversations/{id}/messages | 必需 scope，按观察顺序倒序；limit/offset 同上 |
+| POST /api/attachments/{event_id}/reveal | 根据账本中已获取的附件，在 Finder/Explorer 定位本地副本；不接受文件路径，不执行或播放文件 |
 | GET /api/runs | 最近执行的分页摘要，含 trace_id、输入引用、最终回复、原因和耗时 |
 | GET /api/runs/{trace_id} | 单次执行记录；不存在返回 404 |
 | GET /api/outbox | 分页回复意图、结果和人工处理状态；不暴露完整基座回执 |

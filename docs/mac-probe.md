@@ -59,6 +59,9 @@ uv run wechat-agent serve
 开始前要求本机匹配的 `.local/acceptance/mac/phase-5/degraded-flow.json`、
 `degraded-fixed-send.json` 及其成功原生回执：平台/来源 revision、客户端版本/构建、
 绑定和源库指纹一致，报告为用户已接受的降级流程。未决原生操作先停发，不调用模型。
+兼容微信新增 `message/media_<数字>.db` 或 `media/media_<数字>.db`：必须能用当前源库身份
+精确重现原验收的源库指纹，才允许把额外的语音库加入读取。原有数据库的删除、替换或其他新增分片
+仍会拦截；既有验收报告不重写，应用账本保持原绑定锚点，运行中会继续固定新加入语音库的身份。
 DATA_DIR 可配置，上述路径以默认 `.local` 为例；不能复制其他账号或 Windows 报告放行。
 
 发送前自动抬高/恢复已打开的唯一绑定独立窗，复核 DB 中标题与原生 username；

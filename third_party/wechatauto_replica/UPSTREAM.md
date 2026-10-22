@@ -19,6 +19,11 @@ OCR uses Windows WinRT. App-original code has its own noncommercial license.
 
 ## Local modifications (2026-10-21)
 
+- 2026-10-22: normalized database rows additionally retain `type_code`, so the host
+  distinguishes type-49 file subtype 6 from links/cards without retaining raw XML.
+  The host reuses MediaDownloader.download_voice and its file-name metadata parser;
+  only already-local content is acquired into per-message private directories.
+
 - db.py: optional strict_account requires explicit account/root/cache; disables both
   account-switching recovery methods and other-account key-cache reads; stable keys
   stay under workdir. Strict reads reject failed main snapshot/WAL merges instead of
