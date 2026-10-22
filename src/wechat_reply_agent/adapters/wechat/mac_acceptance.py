@@ -8,6 +8,10 @@ from wechat_reply_agent.adapters.wechat.base import AdapterError
 from wechat_reply_agent.adapters.wechat.mac_bridge import client_version, source_identity
 from wechat_reply_agent.adapters.wechat.mac_profile import REVISION
 from wechat_reply_agent.adapters.wechat.mac_security import require_security_clear
+from wechat_reply_agent.adapters.wechat.mac_sources import (
+    matching_accepted_sources,
+    source_fingerprint,
+)
 
 
 def context(profile):
@@ -83,6 +87,12 @@ def require_runtime_acceptance(settings, profile):
         report = json.loads((directory / "degraded-flow.json").read_text())
         fixed = json.loads((directory / "degraded-fixed-send.json").read_text())
         expected = context(profile)
+        accepted = matching_accepted_sources(
+            source_identity(profile.db_root), report.get("source_fingerprint")
+        )
+        if accepted is None:
+            raise ValueError
+        expected["source_fingerprint"] = source_fingerprint(accepted)
         if (
             any(report.get(k) != v or fixed.get(k) != v for k, v in expected.items())
             or report.get("status") != "passed"

@@ -566,7 +566,9 @@ export function SettingsPage() {
                   {diagnostic.healthy ? "环境可用" : "请检查权限与依赖"}
                 </Pill>
               </div>
-              <p>环境可用不等于已连接，点击开始后才会连接微信。</p>
+              <p>
+                此项检查系统权限与依赖；开始运行还会校验账号绑定、数据库和接入验收记录。
+              </p>
               {Object.entries(diagnostic.permissions).map(([key, val]) => (
                 <div className="diagnostic-line" key={key}>
                   <span>

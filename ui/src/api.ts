@@ -148,12 +148,30 @@ export const reasonText = (value: string): string =>
         "微信数据发生变化，请停止服务并核对绑定后重启。",
       account_or_database_binding_changed:
         "微信账号或数据库发生变化，请重新核对本机绑定。",
+      mac_matching_degraded_acceptance_required:
+        "当前 Mac 微信绑定、版本或数据库与已验收记录不一致，请核对本机接入记录。环境检测通过仍需完成此项校验。",
+      mac_g1_matching_report_required:
+        "缺少与当前 Mac 微信绑定匹配的读取验收记录，请先完成接入验收。",
+      mac_g2_matching_report_required:
+        "缺少与当前 Mac 微信绑定匹配的发送验收记录，请先完成接入验收。",
+      windows_matching_acceptance_required:
+        "当前 Windows 微信绑定或版本与已验收记录不一致，请核对本机接入记录。",
+      mac_account_security_stop_active:
+        "微信接入已暂停，请先核对微信登录状态并处理本机接入暂停记录。",
+      mac_client_version_changed:
+        "微信版本或构建发生变化，请重新核对本机接入。",
+      mac_key_or_database_validation_failed:
+        "微信本地数据库未通过读取校验，请核对账号绑定和读取密钥。",
+      unresolved_native_operation_stop_required:
+        "有一次微信发送结果尚未核对，请先确认已发送或作废。",
       desktop_resume_reconnect_required:
         "电脑从睡眠或中断中恢复，请确认微信窗口后重新开始。",
       model_timeout: "模型响应超时，确认网络后可重新开始。",
       model_request_failed: "模型暂时无法连接，请先在设置中测试连接。",
     }) as Record<string, string>
-  )[value] || "请检查模型与微信接入设置，确认后重新开始。";
+  )[value] ||
+  explanations[value] ||
+  "启动或运行未完成，请检查本机接入状态后重试。";
 export const sizeText = (bytes: number) =>
   bytes < 1000 ? `${bytes} B` : `${(bytes / 1000).toFixed(1)} KB`;
 export const timeText = (value: string | number) =>

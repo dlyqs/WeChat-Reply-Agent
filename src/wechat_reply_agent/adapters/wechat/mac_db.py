@@ -42,10 +42,12 @@ class MacAdapter:
             SourceFile,
         )
         from wechat_reply_agent.adapters.wechat.mac_bridge import source_identity
+        from wechat_reply_agent.adapters.wechat.mac_sources import runtime_binding_sources
 
         self.validate_profile()
         p = self.profile
         identity = source_identity(p.db_root)
+        accepted_identity = runtime_binding_sources(self.settings, p, identity)
         files = {p.db_root / name: SourceFile.read(p.db_root / name) for name in identity}
         fingerprint = hashlib.sha256(
             json.dumps(
@@ -56,7 +58,7 @@ class MacAdapter:
                     "generation": p.account_generation,
                     "self": p.self_username,
                     "root": str(p.db_root.resolve()),
-                    "source": identity,
+                    "source": accepted_identity,
                 },
                 sort_keys=True,
             ).encode()

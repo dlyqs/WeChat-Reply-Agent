@@ -265,8 +265,11 @@ class MacBridge:
         }
 
     def check(self):
+        from wechat_reply_agent.adapters.wechat.mac_sources import extends_with_media
+
         require_security_clear(self.settings)
-        if not self.identity or source_identity(self.profile.db_root) != self.identity:
+        current = source_identity(self.profile.db_root)
+        if not self.identity or not extends_with_media(self.identity, current):
             raise AdapterError("native_database_replaced")
         if process_binding(self.profile.app_path, self.profile.db_root) != self.process:
             raise AdapterError("mac_process_changed_reconnect_required")
@@ -275,6 +278,8 @@ class MacBridge:
             self.profile.wechat_build,
         ):
             raise AdapterError("mac_client_version_changed")
+        # Newly created media shards become pinned too, so their later replacement stops reads.
+        self.identity = current
 
     def snapshot(self, username):
         self.check()

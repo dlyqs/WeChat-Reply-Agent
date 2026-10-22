@@ -287,6 +287,39 @@ def test_mac_source_salt_change_stops_even_if_file_inode_is_unchanged(mac):
         mac.service.check_database()
 
 
+def test_mac_new_voice_database_preserves_acceptance_and_ledger_anchor(mac):
+    mac.service.start()
+    wait_for(lambda: mac.service.connected)
+    mac.service.halt()
+    original_binding = mac.adapter.runtime_binding().fingerprint
+    flow = mac.report.read_bytes()
+    fixed_path = mac.report.parent / "degraded-fixed-send.json"
+    fixed = fixed_path.read_bytes()
+    media = mac.adapter.profile.db_root / "message/media_0.db"
+    media.parent.mkdir()
+    media.write_bytes(b"new voice identity")
+    binding = mac.adapter.runtime_binding()
+    assert binding.fingerprint == original_binding
+    assert media in binding.source_files
+    mac.service.start()
+    wait_for(lambda: mac.service.connected or mac.service.future.done())
+    assert mac.service.connected and mac.service.state == "running"
+    mac.service.halt()
+    assert mac.report.read_bytes() == flow and fixed_path.read_bytes() == fixed
+    assert mac.native.attempts == 0
+
+
+def test_mac_new_voice_database_does_not_hide_original_source_replacement(mac):
+    root = mac.adapter.profile.db_root
+    (root / "message").mkdir()
+    (root / "message/media_0.db").write_bytes(b"new voice identity")
+    (root / "message_0.db").write_bytes(b"replaced identity")
+    mac.service.start()
+    wait_for(lambda: mac.service.future.done())
+    assert mac.service.reason == "mac_matching_degraded_acceptance_required"
+    assert mac.service.runtime is None and mac.native.attempts == 0
+
+
 def test_mac_only_settings_are_applicable_and_visual_flags_are_inactive(mac):
     public = mac.store.public()
     assert "wechat_uia_gate_enabled" in public["inactive"]
