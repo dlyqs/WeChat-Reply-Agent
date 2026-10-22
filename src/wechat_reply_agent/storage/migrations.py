@@ -5,14 +5,40 @@ from wechat_reply_agent.adapters.wechat.base import AdapterError
 
 def migrate(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version > 3:
+    if version > 4:
         raise AdapterError("database_version_unsupported")
-    if version == 3:
+    if version == 4:
         return
     if version < 2:
         migrate_v2(db)
+    if version < 3:
+        migrate_v3(db)
     with db:
         db.execute("BEGIN IMMEDIATE")
+        if db.execute("PRAGMA user_version").fetchone()[0] >= 4:
+            return
+        db.execute("""CREATE TABLE IF NOT EXISTS knowledge_bases(
+            id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,kind TEXT NOT NULL DEFAULT 'custom',
+            created REAL NOT NULL)""")
+        db.execute("""INSERT OR IGNORE INTO knowledge_bases VALUES(
+            'personal','我的知识库','存放自己的产品、服务与业务资料',1,'custom',0)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS knowledge_memberships(
+            document_id TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+            base_id TEXT NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+            PRIMARY KEY(document_id,base_id))""")
+        db.execute("""INSERT OR IGNORE INTO knowledge_memberships
+            SELECT id,'personal' FROM knowledge_documents""")
+        db.execute("""CREATE TABLE IF NOT EXISTS history_redactions(
+            kind TEXT NOT NULL,record_id TEXT NOT NULL,PRIMARY KEY(kind,record_id))""")
+        db.execute("PRAGMA user_version=4")
+
+
+def migrate_v3(db):
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute("PRAGMA user_version").fetchone()[0] >= 3:
+            return
         db.execute("""CREATE TABLE IF NOT EXISTS knowledge_documents(
             id TEXT PRIMARY KEY, name TEXT NOT NULL, digest TEXT UNIQUE NOT NULL,
             byte_size INTEGER NOT NULL, chunk_count INTEGER NOT NULL, created REAL NOT NULL)""")

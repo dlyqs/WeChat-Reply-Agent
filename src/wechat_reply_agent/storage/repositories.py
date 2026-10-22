@@ -21,8 +21,13 @@ class Repository:
         return self.read(
             """SELECT c.id,c.scope,c.account_ref,ct.alias,
             (SELECT count(*) FROM inbox i
-             WHERE i.scope=c.scope AND i.conversation=c.id) message_count
+             WHERE i.scope=c.scope AND i.conversation=c.id AND NOT EXISTS
+             (SELECT 1 FROM history_redactions h
+              WHERE h.kind='inbox' AND h.record_id=i.id)) message_count
             FROM conversations c LEFT JOIN contacts ct ON ct.scope=c.scope AND ct.username=c.id
+            WHERE EXISTS (SELECT 1 FROM inbox i WHERE i.scope=c.scope AND i.conversation=c.id
+                AND NOT EXISTS (SELECT 1 FROM history_redactions h
+                                WHERE h.kind='inbox' AND h.record_id=i.id))
             ORDER BY c.scope,c.id LIMIT ? OFFSET ?""",
             (limit, offset),
         )
@@ -30,6 +35,8 @@ class Repository:
     def messages(self, conversation, scope, limit, offset):
         rows = self.read(
             "SELECT id,payload,status FROM inbox WHERE conversation=? AND scope=? "
+            "AND NOT EXISTS (SELECT 1 FROM history_redactions h "
+            "WHERE h.kind='inbox' AND h.record_id=inbox.id) "
             "ORDER BY rowid DESC LIMIT ? OFFSET ?",
             (conversation, scope, limit, offset),
         )
@@ -45,16 +52,21 @@ class Repository:
             for r in rows
         ]
 
-    def outbox(self, limit, offset):
+    def outbox(self, limit, offset, scope=None, conversation=None):
         rows = self.read(
             "SELECT id,scope,intent,state,result,created,resolution FROM outbox "
+            "WHERE NOT EXISTS (SELECT 1 FROM history_redactions h "
+            "WHERE h.kind='outbox' AND h.record_id=outbox.id) "
+            "AND (? IS NULL OR scope=?) AND (? IS NULL OR "
+            "json_extract(intent,'$.conversation.conversation_id')=?) "
             "ORDER BY created DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+            (scope, scope, conversation, conversation, limit, offset),
         )
         for row in rows:
             intent = json.loads(row.pop("intent"))
             result = json.loads(row.pop("result") or "{}")
             row.update(
+                conversation_id=intent["conversation"]["conversation_id"],
                 reply_text=intent["reply_text"],
                 mode=intent["mode"],
                 input_refs=intent["input_event_refs"],
@@ -64,7 +76,10 @@ class Repository:
 
     def runs(self, limit, offset):
         rows = self.read(
-            "SELECT * FROM agent_runs ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
+            "SELECT * FROM agent_runs WHERE NOT EXISTS (SELECT 1 FROM history_redactions h "
+            "WHERE h.kind='run' AND h.record_id=CAST(agent_runs.id AS TEXT)) "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
         )
         return [self.run_view(row) for row in rows]
 
@@ -86,7 +101,12 @@ class Repository:
         }
 
     def run(self, trace_id):
-        rows = self.read("SELECT * FROM agent_runs WHERE id=?", (trace_id,))
+        rows = self.read(
+            "SELECT * FROM agent_runs WHERE id=? AND NOT EXISTS "
+            "(SELECT 1 FROM history_redactions h WHERE h.kind='run' "
+            "AND h.record_id=CAST(agent_runs.id AS TEXT))",
+            (trace_id,),
+        )
         if not rows:
             raise AdapterError("run_not_found")
         return self.run_view(rows[0])
@@ -116,5 +136,98 @@ class Repository:
         ledger = Ledger(self.path)
         try:
             ledger.resolve(outbox_id, resolution)
+        finally:
+            ledger.close()
+
+    def dashboard(self):
+        return self.read("""SELECT
+            (SELECT count(*) FROM inbox i WHERE NOT EXISTS (SELECT 1 FROM history_redactions h
+                WHERE h.kind='inbox' AND h.record_id=i.id)) messages,
+            (SELECT count(*) FROM outbox o WHERE NOT EXISTS (SELECT 1 FROM history_redactions h
+                WHERE h.kind='outbox' AND h.record_id=o.id)) replies,
+            (SELECT count(*) FROM agent_runs a WHERE NOT EXISTS (SELECT 1 FROM history_redactions h
+                WHERE h.kind='run' AND h.record_id=CAST(a.id AS TEXT))) runs,
+            (SELECT count(*) FROM memories) memories,
+            (SELECT count(*) FROM outbox WHERE state IN ('unknown','paused')
+                AND resolution IS NULL) unresolved,
+            (SELECT avg(model_ms) FROM agent_runs a WHERE NOT EXISTS
+                (SELECT 1 FROM history_redactions h WHERE h.kind='run'
+                 AND h.record_id=CAST(a.id AS TEXT))) model_ms""")[0]
+
+    def clear_history(self, scope=None, conversation=None, forget_memories=False):
+        if bool(scope) != bool(conversation):
+            raise AdapterError("history_selection_invalid")
+        inbox_where = "(? IS NULL OR (scope=? AND conversation=?))"
+        outbox_where = (
+            "(? IS NULL OR (scope=? AND json_extract(intent,'$.conversation.conversation_id')=?))"
+        )
+        args = (scope, scope, conversation)
+        run_where = """(? IS NULL OR (scope=? AND EXISTS (
+            SELECT 1 FROM json_each(agent_runs.input_refs) r JOIN inbox i ON i.id=r.value
+            WHERE i.conversation=? AND i.scope=agent_runs.scope)))"""
+        ledger = Ledger(self.path)
+        try:
+            with ledger.db:
+                ledger.db.execute("BEGIN IMMEDIATE")
+                if ledger.db.execute(
+                    "SELECT 1 FROM outbox WHERE "
+                    + outbox_where
+                    + " AND state IN ('pending','sending','unknown','paused') "
+                    "AND resolution IS NULL LIMIT 1",
+                    args,
+                ).fetchone():
+                    raise AdapterError("history_unresolved_outbox")
+                counts = {}
+                for kind, table, where in (
+                    ("inbox", "inbox", inbox_where),
+                    ("outbox", "outbox", outbox_where),
+                    ("run", "agent_runs", run_where),
+                ):
+                    ids = ledger.db.execute(
+                        "SELECT id FROM "
+                        + table
+                        + " WHERE "
+                        + where
+                        + " AND NOT EXISTS (SELECT 1 FROM history_redactions h WHERE h.kind=? "
+                        "AND h.record_id=CAST(" + table + ".id AS TEXT))",
+                        (*args, kind),
+                    ).fetchall()
+                    counts[kind] = len(ids)
+                    ledger.db.executemany(
+                        "INSERT OR IGNORE INTO history_redactions VALUES(?,?)",
+                        [(kind, str(row[0])) for row in ids],
+                    )
+                ledger.db.execute(
+                    "UPDATE inbox SET payload=json_set(payload,'$.text',NULL,"
+                    "'$.attachment_ref',NULL),status='cleared' WHERE " + inbox_where,
+                    args,
+                )
+                ledger.db.execute(
+                    "UPDATE messages SET payload=json_set(payload,'$.text',NULL,"
+                    "'$.attachment_ref',NULL),status='cleared' WHERE " + inbox_where,
+                    args,
+                )
+                ledger.db.execute(
+                    "UPDATE outbox SET intent=json_set(intent,'$.reply_text','[已清除]') "
+                    "WHERE " + outbox_where,
+                    args,
+                )
+                ledger.db.execute(
+                    "UPDATE agent_runs SET result=json_set(result,'$.reply_text',NULL,"
+                    "'$.sources',json('[]')) WHERE " + run_where,
+                    args,
+                )
+                ledger.db.execute("DELETE FROM context WHERE " + inbox_where, args)
+                counts["memories"] = 0
+                if forget_memories:
+                    counts["memories"] = ledger.db.execute(
+                        "DELETE FROM memories WHERE (? IS NULL OR (scope=? AND contact=?))", args
+                    ).rowcount
+            return {
+                "cleared": counts,
+                "deduplication_preserved": True,
+                "knowledge_preserved": True,
+                "wechat_unchanged": True,
+            }
         finally:
             ledger.close()

@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.knowledge.demo import seed_demo
 from wechat_reply_agent.llm.client import CompatibleModel
 from wechat_reply_agent.runtime.prototype import Prototype
 from wechat_reply_agent.runtime.worker import execute
@@ -22,6 +23,7 @@ class RuntimeService:
         self.path = store.settings.data_dir / "prototype.sqlite3"
         self.repo = Repository(self.path)
         self.repo.recover()
+        seed_demo(self.path)
         self.file_identity = self._identity()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wechat-gui")
         self.guard = threading.RLock()
@@ -45,11 +47,46 @@ class RuntimeService:
         except OSError:
             raise AdapterError("application_database_replaced") from None
 
-    def check_database(self):
+    def check_database(self, check_sources=True):
         if self._identity() != self.file_identity:
             raise AdapterError("application_database_replaced")
-        if self.binding:
+        if self.binding and check_sources:
             self.binding.check_sources()
+
+    def require_idle(self):
+        with self.guard:
+            if self.state not in ("stopped", "paused", "degraded") or (
+                self.future and not self.future.done()
+            ):
+                raise AdapterError("stop_before_content_change")
+        self.check_database(check_sources=False)
+
+    def setup(self):
+        aliases = []
+        profile_ready = False
+        try:
+            if self.settings.wechat_adapter == "mac_db":
+                from wechat_reply_agent.adapters.wechat.mac_profile import load_mac_profile
+
+                profile = load_mac_profile(self.settings.wechat_profile)
+            else:
+                from wechat_reply_agent.adapters.wechat.replica_profile import load_replica_profile
+
+                profile = load_replica_profile(self.settings.wechat_profile)
+            profile_ready = (
+                profile.account_confirmed
+                and profile.account_ref == self.settings.wechat_account_ref
+            )
+            aliases = [c.alias for c in profile.contacts if c.single_chat_confirmed]
+        except AdapterError:
+            pass
+        return {
+            "profile_ready": profile_ready,
+            "contact_aliases": aliases,
+            "model_ready": bool(self.settings.llm_api_key.get_secret_value()),
+            "allowlist_ready": bool(self.settings.wechat_allowlist),
+            "native_connection": "explicit_start_required",
+        }
 
     def _same_database(self):
         try:

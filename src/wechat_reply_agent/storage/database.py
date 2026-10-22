@@ -24,7 +24,7 @@ class Ledger:
                     private.chmod(0o600)
                 except FileNotFoundError:
                     pass
-        if self.db.execute("PRAGMA user_version").fetchone()[0] > 3:
+        if self.db.execute("PRAGMA user_version").fetchone()[0] > 4:
             self.db.close()
             raise AdapterError("database_version_unsupported")
         self.db.execute("PRAGMA journal_mode=WAL")

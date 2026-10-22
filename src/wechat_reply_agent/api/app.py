@@ -1,21 +1,30 @@
 """Same-origin API and bundled UI. No desktop imports at application startup."""
 
+import asyncio
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import Body, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from langsmith import tracing_context
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings.exceptions import SettingsError
 from starlette.exceptions import HTTPException
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.agent.graph import create_graph
+from wechat_reply_agent.agent.personas import PRESETS
+from wechat_reply_agent.config import Settings
+from wechat_reply_agent.domain.messages import InboundEvent
+from wechat_reply_agent.knowledge.demo import demo_catalog, seed_demo
 from wechat_reply_agent.knowledge.store import KnowledgeStore
+from wechat_reply_agent.llm.client import CompatibleModel, ModelError
 from wechat_reply_agent.memory.store import MemoryStore
 from wechat_reply_agent.runtime.service import RuntimeService
 from wechat_reply_agent.settings_store import SettingsStore
@@ -25,6 +34,48 @@ class DocumentInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)
     content: str = Field(min_length=1, max_length=48_000)
+    base_id: str = Field(default="personal", min_length=1, max_length=64)
+
+
+class BaseInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=300)
+
+
+class BaseChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    description: str | None = Field(default=None, max_length=300)
+    enabled: bool | None = None
+
+
+class ClearHistoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation: str
+    scope: str | None = Field(default=None, min_length=1, max_length=500)
+    conversation: str | None = Field(default=None, min_length=1, max_length=200)
+    forget_memories: bool = False
+
+
+class ModelTestInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    llm_base_url: str | None = Field(default=None, max_length=500)
+    llm_model: str | None = Field(default=None, max_length=100)
+    llm_api_key: str | None = Field(default=None, max_length=500)
+
+
+class PreviewMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class PreviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=2000)
+    base_id: str = Field(min_length=1, max_length=64)
+    history: list[PreviewMessage] = Field(default_factory=list, max_length=12)
 
 
 class MemoryInput(BaseModel):
@@ -87,9 +138,11 @@ def create_app(store=None, service=None, ui_dir=None):
                     "/api/outbox",
                     "/api/knowledge",
                     "/api/memories",
+                    "/api/history",
+                    "/api/dashboard",
                 )
             ):
-                service.check_database()
+                service.check_database(check_sources=False)
             response = await call_next(request)
         except Exception:
             return failure("operation_failed", 500)
@@ -129,6 +182,13 @@ def create_app(store=None, service=None, ui_dir=None):
             "memory_contact_not_found",
             "memory_fact_invalid",
             "memory_capacity_reached",
+            "knowledge_base_not_found",
+            "knowledge_base_invalid",
+            "knowledge_base_capacity_reached",
+            "default_knowledge_base_required",
+            "history_selection_invalid",
+            "history_confirmation_required",
+            "history_unresolved_outbox",
         }
         code = str(exc) if str(exc) in allowed else "operation_rejected"
         return failure(code, 404 if code.endswith("_not_found") else 409)
@@ -157,6 +217,83 @@ def create_app(store=None, service=None, ui_dir=None):
     @app.get("/api/runtime")
     def runtime():
         return service.snapshot()
+
+    @app.get("/api/setup")
+    def setup():
+        return service.setup()
+
+    @app.get("/api/dashboard")
+    def dashboard():
+        return service.repo.dashboard()
+
+    @app.get("/api/agent/presets")
+    def presets():
+        return {"items": PRESETS}
+
+    @app.post("/api/model/test")
+    def test_model(body: ModelTestInput):
+        with commands:
+            service.require_idle()
+            changes = body.model_dump(exclude_none=True)
+            if not changes.get("llm_api_key"):
+                changes.pop("llm_api_key", None)
+            settings = Settings.model_validate(store.settings.model_dump() | changes)
+            started = time.monotonic()
+            try:
+                asyncio.run(
+                    CompatibleModel(settings).complete(
+                        [
+                            {"role": "system", "content": "This is a connection check. Reply OK."},
+                            {"role": "user", "content": "OK?"},
+                        ]
+                    )
+                )
+            except ModelError as exc:
+                return failure(str(exc), 400)
+            return {"ok": True, "duration_ms": round((time.monotonic() - started) * 1000)}
+
+    @app.post("/api/history/clear")
+    def clear_history(body: ClearHistoryInput):
+        with commands:
+            service.require_idle()
+            if body.confirmation != "清除":
+                raise AdapterError("history_confirmation_required")
+            return service.repo.clear_history(body.scope, body.conversation, body.forget_memories)
+
+    @app.post("/api/agent/preview")
+    def preview_reply(body: PreviewInput):
+        with commands:
+            service.require_idle()
+            if not store.settings.llm_api_key.get_secret_value():
+                raise AdapterError("model_key_missing")
+            if not any(b["id"] == body.base_id for b in knowledge.bases()):
+                raise AdapterError("knowledge_base_not_found")
+            graph = create_graph(
+                store.settings,
+                service.model_factory(store.settings),
+                KnowledgeStore(service.path, body.base_id),
+            )
+            event = InboundEvent(
+                conversation_id="preview",
+                account_ref="preview",
+                account_generation="preview",
+                occurrence_ref="preview",
+                source_message_id=uuid4().hex,
+                direction="incoming",
+                text=body.question,
+                confidence=1,
+            )
+            with tracing_context(enabled=False):
+                result = asyncio.run(
+                    graph.ainvoke(
+                        {
+                            "events": [event],
+                            "history": [m.model_dump() for m in body.history],
+                        },
+                        config={"recursion_limit": 16, "callbacks": []},
+                    )
+                )["result"]
+            return result.model_dump() | {"sent_to_wechat": False, "preview_only": True}
 
     @app.post("/api/runtime/{action}")
     def transition(action: str):
@@ -199,8 +336,17 @@ def create_app(store=None, service=None, ui_dir=None):
         return service.repo.run(trace_id)
 
     @app.get("/api/outbox")
-    def outbox(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
-        return {"items": service.repo.outbox(limit, offset), "limit": limit, "offset": offset}
+    def outbox(
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        scope: str | None = Query(default=None, max_length=500),
+        conversation: str | None = Query(default=None, max_length=200),
+    ):
+        return {
+            "items": service.repo.outbox(limit, offset, scope, conversation),
+            "limit": limit,
+            "offset": offset,
+        }
 
     @app.post("/api/outbox/{outbox_id}/resolve")
     def resolve(outbox_id: str, body: Annotated[dict, Body()]):
@@ -229,29 +375,73 @@ def create_app(store=None, service=None, ui_dir=None):
             return service.diagnostic()
 
     def require_content_edit():
-        if service.snapshot()["state"] not in ("stopped", "paused", "degraded"):
-            raise AdapterError("stop_before_content_change")
+        service.require_idle()
+
+    @app.get("/api/knowledge/bases")
+    def knowledge_bases():
+        return {"items": knowledge.bases(), "demo": demo_catalog()}
+
+    @app.post("/api/knowledge/bases")
+    def create_base(body: BaseInput):
+        with commands:
+            require_content_edit()
+            return knowledge.create_base(body.name, body.description)
+
+    @app.patch("/api/knowledge/bases/{base_id}")
+    def update_base(base_id: str, body: BaseChange):
+        with commands:
+            require_content_edit()
+            return knowledge.update_base(base_id, body.model_dump(exclude_none=True))
+
+    @app.delete("/api/knowledge/bases/{base_id}")
+    def delete_base(base_id: str):
+        with commands:
+            require_content_edit()
+            knowledge.delete_base(base_id)
+            return {"id": base_id, "deleted": True}
+
+    @app.post("/api/knowledge/demo")
+    def restore_demo():
+        with commands:
+            require_content_edit()
+            seed_demo(service.path, force=True, activate=True)
+            return {"items": knowledge.bases(), "demo": demo_catalog()}
 
     @app.get("/api/knowledge/documents")
-    def documents(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
-        return {"items": knowledge.documents(limit, offset), "limit": limit, "offset": offset}
+    def documents(
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        base_id: str | None = Query(default=None, max_length=64),
+    ):
+        return {
+            "items": knowledge.documents(limit, offset, base_id),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @app.get("/api/knowledge/documents/{document_id}")
+    def document(document_id: str):
+        return knowledge.document(document_id)
 
     @app.post("/api/knowledge/documents")
     def import_document(body: DocumentInput):
         with commands:
             require_content_edit()
-            return knowledge.import_text(body.name, body.content)
+            return knowledge.import_text(body.name, body.content, body.base_id)
 
     @app.delete("/api/knowledge/documents/{document_id}")
-    def delete_document(document_id: str):
+    def delete_document(document_id: str, base_id: str | None = Query(default=None, max_length=64)):
         with commands:
             require_content_edit()
-            knowledge.delete(document_id)
+            knowledge.delete(document_id, base_id)
             return {"id": document_id, "deleted": True}
 
     @app.get("/api/knowledge/search")
-    def search_knowledge(q: str = Query(min_length=1, max_length=2000)):
-        return {"items": knowledge.search(q)}
+    def search_knowledge(
+        q: str = Query(min_length=1, max_length=2000),
+        base_id: str | None = Query(default=None, max_length=64),
+    ):
+        return {"items": knowledge.search(q, base_id=base_id)}
 
     @app.get("/api/memories/contacts")
     def memory_contacts():
