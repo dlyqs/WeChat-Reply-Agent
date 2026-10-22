@@ -44,6 +44,13 @@ const explanations: Record<string, string> = {
   poll_minimum_10_seconds: "读取消息的间隔请设置为10秒以上。",
   worker_still_stopping: "当前处理还在结束中，请稍等片刻。",
   runtime_transition_invalid: "运行状态已发生变化，请刷新后再操作。",
+  attachment_not_found: "这条附件记录已清除，请刷新会话。",
+  attachment_not_available:
+    "还没有获取到本地内容，请等待微信下载和下一轮读取。",
+  attachment_file_missing: "本地副本已被移走或删除，助理运行后会重新尝试获取。",
+  attachment_location_rejected: "附件位置已失效，请重新获取本地内容。",
+  attachment_reveal_failed: "暂时无法打开文件管理器，请稍后重试。",
+  attachment_reveal_unsupported: "当前系统暂不支持打开附件位置。",
 };
 export class ApiError extends Error {
   constructor(

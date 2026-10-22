@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 import time
+import xml.etree.ElementTree as ET
 from sqlcipher_probe import DB, load_key, verify
 
 
@@ -16,6 +17,27 @@ def emit(value):
 
 def literal(text):
     return "CAST(x'" + text.encode().hex() + "' AS TEXT)"
+
+
+def file_metadata(raw):
+    if raw.startswith(b'\x28\xb5\x2f\xfd'):
+        import zstandard
+        try:
+            raw = zstandard.ZstdDecompressor().decompress(raw, max_output_size=4 * 1024 * 1024)
+        except zstandard.ZstdError:
+            return {}
+    if len(raw) > 4 * 1024 * 1024 or b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
+        return {}
+    try:
+        root = ET.fromstring(raw)
+        app = root if root.tag == 'appmsg' else root.find('.//appmsg')
+        if app is None or app.findtext('type') != '6':
+            return {}
+        size = app.findtext('appattach/totallen')
+        return {'media_kind': 'file', 'file_name': app.findtext('title'),
+                'file_size': int(size) if size and size.isdigit() else None}
+    except (ET.ParseError, ValueError):
+        return {}
 
 
 def private_write(path, data):
@@ -110,6 +132,9 @@ class Reader:
                         if chat.endswith('@chatroom') and sender_id and body.startswith(sender_id+':\n'):
                             body = body[len(sender_id)+2:]
                         row['text'] = body
+                    elif int(row['local_type']) & 0xFFFFFFFF == 49:
+                        # Never export XML containing download credentials.
+                        row.update(file_metadata(raw))
                     else:
                         row['omitted'] = 'non_text_message; XML/media credentials are not exported'
                     result.append(row)

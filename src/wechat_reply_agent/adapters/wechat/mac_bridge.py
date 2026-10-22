@@ -290,6 +290,14 @@ class MacBridge:
         self.check()
         return rows
 
+    def acquire_attachment(self, event):
+        from wechat_reply_agent.adapters.wechat.local_media import MacLocalMedia
+
+        self.check()
+        value = MacLocalMedia(self.reader, self.settings.data_dir).acquire(event)
+        self.check()
+        return value
+
     def assert_session(self):
         """AX-only readiness check: no screenshot, activation, clipboard, or input."""
         self.check()

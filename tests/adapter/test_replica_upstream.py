@@ -5,6 +5,7 @@ import glob
 import os
 import shutil
 import sqlite3
+import sys
 import threading
 import types
 from pathlib import Path
@@ -22,6 +23,82 @@ def method(file, cls, name, **namespace):
     tree = ast.fix_missing_locations(ast.Module(body=[future, function], type_ignores=[]))
     exec(compile(tree, str(VENDOR / file), "exec"), namespace)
     return namespace[name]
+
+
+def test_replica_media_uses_real_vendor_extractors_with_exact_shard(tmp_path, monkeypatch):
+    import re
+
+    from wechat_reply_agent.adapters.wechat.local_media import ReplicaLocalMedia
+    from wechat_reply_agent.domain.messages import InboundEvent, LocalAttachment
+
+    audio = b"\x02#!SILK_V3synthetic"
+    media = tmp_path / "media_0.db"
+    resources = tmp_path / "message_resource.db"
+    with sqlite3.connect(media) as conn:
+        conn.executescript(
+            "CREATE TABLE Name2Id(user_name TEXT); INSERT INTO Name2Id VALUES('friend');"
+            "CREATE TABLE VoiceInfo(chat_name_id,svr_id,create_time,voice_data);"
+        )
+        conn.execute("INSERT INTO VoiceInfo VALUES(1,101,100,?)", (audio,))
+    with sqlite3.connect(resources) as conn:
+        conn.executescript(
+            "CREATE TABLE MessageResourceInfo(message_id,message_svr_id);"
+            "CREATE TABLE MessageResourceDetail(message_id,packed_info);"
+            "INSERT INTO MessageResourceInfo VALUES(1,102);"
+        )
+        conn.execute("INSERT INTO MessageResourceDetail VALUES(1,?)", (b"order.pdf",))
+    file = tmp_path / "account/msg/file/2026-10/order (1).pdf"
+    file.parent.mkdir(parents=True)
+    file.write_bytes(b"data")
+    calls = []
+
+    class DB:
+        account_dir = str(tmp_path / "account")
+        _db_files = [(p.name, str(p), 0) for p in (media, resources)]
+
+        def _open(self, rel):
+            conn = sqlite3.connect(tmp_path / rel)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+        def get_message_row(self, user, local, local_type=None, shard=None):
+            calls.append((user, local, shard))
+            assert shard == "message__message_1.db"
+            return {
+                "server_id": 100 + local,
+                "local_type": 34 if local == 1 else 6 << 32 | 49,
+                "create_time": 1792627200,
+                "content": None,
+            }
+
+    downloader = type(
+        "Downloader",
+        (),
+        {
+            "__init__": lambda self, db, **kwargs: setattr(self, "db", db),
+            "download_voice": method("media.py", "MediaDownloader", "download_voice", os=os),
+            "_file_name": method("media.py", "MediaDownloader", "_file_name", os=os, re=re),
+        },
+    )
+    monkeypatch.setitem(
+        sys.modules, "wechatauto.media", types.SimpleNamespace(MediaDownloader=downloader)
+    )
+    extractor = ReplicaLocalMedia(DB(), tmp_path / "private")
+    for local, kind, expected in ((1, "voice", audio), (2, "file", b"data")):
+        event = InboundEvent(
+            event_id=str(local),
+            conversation_id="friend",
+            occurrence_ref=str(local),
+            local_id=local,
+            shard="message__message_1.db",
+            type=kind,
+            direction="incoming",
+            confidence=1,
+            attachment=LocalAttachment(kind=kind, byte_size=4 if kind == "file" else None),
+        )
+        info, ref = extractor.acquire(event)
+        assert info.status == "available" and Path(ref).read_bytes() == expected
+    assert all(shard == "message__message_1.db" for _, _, shard in calls)
 
 
 def test_inclusive_sql_and_cross_shard_order_and_overflow():

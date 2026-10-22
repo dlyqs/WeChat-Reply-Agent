@@ -180,6 +180,15 @@ class ReplicaBridge:
         with quiet_native():
             return self.gui.send_text_once(text, title)
 
+    def acquire_attachment(self, event):
+        from wechat_reply_agent.adapters.wechat.local_media import ReplicaLocalMedia
+
+        self.assert_account()
+        with quiet_native():
+            value = ReplicaLocalMedia(self.db, self.settings.data_dir).acquire(event)
+        self.assert_account()
+        return value
+
     def wait_new(self, username, since, predicate, timeout=8):
         deadline = time.monotonic() + timeout
         while True:

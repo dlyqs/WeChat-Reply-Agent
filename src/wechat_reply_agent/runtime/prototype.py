@@ -3,6 +3,7 @@
 import asyncio
 import threading
 import time
+from pathlib import Path
 
 from langsmith import tracing_context
 
@@ -70,6 +71,7 @@ class Prototype:
         self.ledger.ingest(
             self.scope, events, cursor, self.eligible, self.settings.queue_max_size, baseline=True
         )
+        self.refresh_attachments()
         self.running, self.reason = True, "running"
         self.started = time.monotonic()
         emit("prototype.ready", outcome=self.settings.send_mode, reason="baseline_recorded")
@@ -91,6 +93,7 @@ class Prototype:
         )
         if added:
             emit("prototype.inbox", outcome="persisted")
+        self.refresh_attachments()
         if not self.ledger.can_send(
             time.time(), self.settings.min_send_interval_seconds, self.settings.max_sends_per_minute
         ):
@@ -117,6 +120,32 @@ class Prototype:
         model_ms = (time.monotonic() - started) * 1000
         with self.send_gate:
             self.complete_turn(batch, result, generation, model_ms)
+
+    def refresh_attachments(self):
+        acquire = getattr(self.adapter, "acquire_attachment", None)
+        if not acquire:
+            return
+        from wechat_reply_agent.adapters.wechat.local_media import attachment_directory, result
+
+        for event in self.ledger.attachment_candidates(self.scope, time.time()):
+            try:
+                path = Path(event.attachment_ref) if event.attachment_ref else None
+                directory = attachment_directory(self.settings.data_dir, event.event_id)
+                if (
+                    path
+                    and path.is_file()
+                    and not path.is_symlink()
+                    and path.resolve().parent == directory
+                ):
+                    attachment, ref = result(event, path)
+                else:
+                    attachment, ref = acquire(event)
+            except AdapterError:
+                # Account/process changes retain the normal stop behavior.
+                raise
+            except Exception:
+                attachment, ref = result(event, reason="media_read_failed", error=True)
+            self.ledger.record_attachment(event.event_id, attachment, ref)
 
     def complete_turn(self, batch, result, generation, model_ms):
         if result.status == "ready":

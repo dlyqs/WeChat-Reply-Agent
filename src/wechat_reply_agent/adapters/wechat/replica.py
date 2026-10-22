@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.adapters.wechat.local_media import describe_media
 from wechat_reply_agent.adapters.wechat.replica_bridge import ReplicaBridge, environment
 from wechat_reply_agent.domain.messages import (
     AdapterCapabilities,
@@ -77,6 +78,7 @@ class ReplicaAdapter:
             "ui_checks_degraded": False,
             "max_text_characters": 1000,
             "supports_newlines": True,
+            "local_media": ["file", "voice"],
             "target_navigation": "bound_single_chat",
         }
 
@@ -135,6 +137,8 @@ class ReplicaAdapter:
             environment=env,
             capabilities=AdapterCapabilities(
                 profile="replica-v1",
+                message_types=("text", "file", "voice"),
+                raw_attachments=True,
                 identity="explicit account + native single-chat username",
                 direction_basis="shard Name2Id sender_username",
                 tested=False,
@@ -192,6 +196,7 @@ class ReplicaAdapter:
         p = self.profile
         sender = row.get("sender_username") or ""
         text_type = row.get("type") in ("文本", "text", 1)
+        attachment = describe_media(row)
         direction = Direction.UNKNOWN
         if row.get("type") in ("系统消息", "system", 10000):
             direction = Direction.SYSTEM
@@ -217,10 +222,16 @@ class ReplicaAdapter:
             direction=direction,
             type="text"
             if text_type
+            else attachment.kind
+            if attachment
             else ("system" if direction == Direction.SYSTEM else "unknown"),
             text=row.get("content") if text_type and isinstance(row.get("content"), str) else None,
+            attachment=attachment,
             confidence=1 if sender and direction != Direction.UNKNOWN else 0,
         )
+
+    def acquire_attachment(self, event):
+        return self._bridge.acquire_attachment(event)
 
     def _read(self, username, since=None, limit=10000):
         if not self.connected or self.degraded:

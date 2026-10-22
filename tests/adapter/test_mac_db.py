@@ -504,6 +504,87 @@ def insert(fixture, local, text="same", shard=0):
     )
 
 
+def test_mac_local_file_and_voice_from_encrypted_resources(encrypted, tmp_path):
+    from wechat_reply_agent.adapters.wechat.local_media import MacLocalMedia
+    from wechat_reply_agent.domain.messages import InboundEvent, LocalAttachment
+
+    f = encrypted
+    resource = f.root / "message/message_resource.db"
+    media = f.root / "media/media_0.db"
+    media.parent.mkdir()
+    audio = b"\x02#!SILK_V3synthetic-audio"
+    schemas = {
+        resource: (
+            "CREATE TABLE ChatName2Id(user_name TEXT);"
+            "INSERT INTO ChatName2Id VALUES('other'),('friend');"
+            "CREATE TABLE MessageResourceInfo(message_id INTEGER,chat_id INTEGER,"
+            "message_local_id INTEGER,message_svr_id INTEGER);"
+            "CREATE TABLE MessageResourceDetail(message_id INTEGER,packed_info BLOB,size INTEGER);"
+            "INSERT INTO MessageResourceInfo VALUES(1,1,1,101),(2,2,1,101);"
+            "INSERT INTO MessageResourceDetail VALUES(1,x'77726f6e672e706466',4),"
+            "(2,x'6f726465722e706466',4);"
+        ),
+        media: (
+            "CREATE TABLE Name2Id(user_name TEXT);"
+            "INSERT INTO Name2Id VALUES('other'),('friend');"
+            "CREATE TABLE VoiceInfo(chat_name_id INTEGER,svr_id INTEGER,"
+            "create_time INTEGER,voice_data BLOB);"
+            f"INSERT INTO VoiceInfo VALUES(1,102,200,x'77726f6e67'),(2,102,100,x'{audio.hex()}');"
+        ),
+    }
+    for path, schema in schemas.items():
+        key = os.urandom(32).hex()
+        f.keys[str(path)] = key
+        with f.sql.DB(path, key, fixture_write=True) as writer:
+            writer.query(schema)
+    f.key_file.write_text(json.dumps(f.keys))
+    f.writers[0].query(
+        f"INSERT INTO \"{f.table}\" VALUES(1,101,{6 << 32 | 49},1792627200,2,x'');"
+        f"INSERT INTO \"{f.table}\" VALUES(2,102,34,1792627200,2,x'');"
+    )
+    source = f.root.parent / "msg/file/2026-10/order(1).pdf"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"data")
+    before = {p: p.read_bytes() for p in (resource, media)}
+    extractor = MacLocalMedia(f.reader, tmp_path / "private")
+    for local_id, kind, expected in ((1, "file", b"data"), (2, "voice", audio)):
+        event = InboundEvent(
+            event_id=str(local_id),
+            conversation_id="friend",
+            occurrence_ref=str(local_id),
+            shard="message_0.db",
+            local_id=local_id,
+            type=kind,
+            direction="incoming",
+            confidence=1,
+            attachment=LocalAttachment(kind=kind),
+        )
+        info, ref = extractor.acquire(event)
+        assert info.status == "available"
+        assert __import__("pathlib").Path(ref).read_bytes() == expected
+        assert info.byte_size == len(expected)
+    assert {p: p.read_bytes() for p in before} == before
+    # Missing audio stays a recorded unavailable attachment; it does not trigger a download.
+    with f.sql.DB(media, f.keys[str(media)], fixture_write=True) as writer:
+        writer.query("DELETE FROM VoiceInfo")
+    info, ref = extractor.acquire(event)
+    assert info.status == "missing" and info.reason == "not_downloaded" and ref is None
+
+
+def test_mac_reader_exports_only_safe_file_metadata(encrypted):
+    from wechat_reply_agent.adapters.wechat.local_media import describe_media
+
+    f = encrypted
+    xml = (
+        "<msg><appmsg><title>order.pdf</title><type>6</type><appattach>"
+        "<totallen>4</totallen><aeskey>PRIVATE</aeskey></appattach></appmsg></msg>"
+    )
+    f.writers[0].query(f"INSERT INTO \"{f.table}\" VALUES(1,101,49,100,2,x'{xml.encode().hex()}');")
+    row = f.reader.read("friend")[0]
+    assert describe_media(row).name == "order.pdf"
+    assert "PRIVATE" not in json.dumps(row)
+
+
 def test_real_sqlcipher_readonly_wal_commit_checkpoint_reset(encrypted):
     f = encrypted
     path = f.root / "message/message_0.db"

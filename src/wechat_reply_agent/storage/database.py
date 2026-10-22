@@ -120,6 +120,30 @@ class Ledger:
         row = self.db.execute("SELECT value FROM cursors WHERE scope=?", (scope,)).fetchone()
         return row[0] if row else None
 
+    def attachment_candidates(self, scope, now, limit=5):
+        rows = self.db.execute(
+            "SELECT payload FROM inbox WHERE scope=? AND status!='cleared' "
+            "AND json_extract(payload,'$.attachment.kind') IN ('file','voice') "
+            "AND coalesce(json_extract(payload,'$.attachment.checked_at'),0) <= ? "
+            "AND NOT EXISTS (SELECT 1 FROM history_redactions h "
+            "WHERE h.kind='inbox' AND h.record_id=inbox.id) "
+            "ORDER BY coalesce(json_extract(payload,'$.attachment.checked_at'),0),"
+            "rowid DESC LIMIT ?",
+            (scope, now - 30, limit),
+        ).fetchall()
+        return [InboundEvent.model_validate_json(r[0]) for r in rows]
+
+    def record_attachment(self, event_id, attachment, attachment_ref):
+        with self.db:
+            for table in ("inbox", "messages"):
+                self.db.execute(
+                    f"UPDATE {table} SET payload=json_set(payload,'$.attachment',json(?),"
+                    "'$.attachment_ref',?) WHERE id=? AND status!='cleared' "
+                    "AND NOT EXISTS (SELECT 1 FROM history_redactions h "
+                    "WHERE h.kind='inbox' AND h.record_id=?)",
+                    (attachment.model_dump_json(), attachment_ref, event_id, event_id),
+                )
+
     def batch(self, scope, window_ms):
         rows = self.db.execute(
             "SELECT payload FROM inbox WHERE scope=? AND status='pending' ORDER BY rowid", (scope,)

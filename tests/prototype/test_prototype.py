@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -147,6 +148,54 @@ def test_filtered_inputs_do_not_call_model(setup, direction, conversation):
     asyncio.run(r.tick())
     assert not m.calls and not a.sent
     assert db.summary(r.scope)["inbox"] == {"filtered": 1}
+
+
+def test_media_retries_after_late_download_without_model_or_cursor_rewind(setup):
+    import time
+
+    from wechat_reply_agent.adapters.wechat.local_media import attachment_directory, result
+    from wechat_reply_agent.domain.messages import LocalAttachment
+
+    r, a, m, db = setup
+    media = event().model_copy(
+        update={
+            "text": None,
+            "type": "voice",
+            "attachment": LocalAttachment(kind="voice"),
+        }
+    )
+    available = False
+
+    def acquire(e):
+        if not available:
+            return result(e, reason="not_downloaded")
+        directory = attachment_directory(r.settings.data_dir, e.event_id)
+        directory.mkdir(parents=True)
+        path = directory / "voice.silk"
+        path.write_bytes(b"#!SILK_V3synthetic")
+        return result(e, path)
+
+    a.acquire_attachment = acquire
+    r.start()
+    a.events = [media]
+    asyncio.run(r.tick())
+    row = db.db.execute("SELECT payload,status FROM inbox").fetchone()
+    assert json.loads(row[0])["attachment"]["status"] == "missing"
+    assert row[1] == "filtered" and not m.calls and not a.sent
+    cursor = db.cursor(r.scope)
+    available = True
+    db.record_attachment(
+        media.event_id, media.attachment.model_copy(update={"checked_at": time.time() - 31}), None
+    )
+    r.refresh_attachments()
+    row = db.db.execute("SELECT payload,status FROM inbox").fetchone()
+    assert json.loads(row[0])["attachment"]["status"] == "available"
+    assert row[1] == "filtered" and db.cursor(r.scope) == cursor
+    assert not m.calls and not a.sent and not db.history(r.scope, "friend")
+    # Text in the same conversation is still processed normally.
+    a.events = [event(id="2")]
+    asyncio.run(r.tick())
+    assert len(m.calls) == len(a.sent) == 1
 
 
 def test_model_timeout_does_not_create_outbox(setup):

@@ -26,6 +26,16 @@ class ConversationRef(Contract):
     confidence: float = Field(ge=0, le=1)
 
 
+class LocalAttachment(Contract):
+    kind: Literal["file", "voice"]
+    status: Literal["pending", "available", "missing", "error"] = "pending"
+    name: str | None = None
+    byte_size: int | None = Field(default=None, ge=0)
+    format: str | None = None
+    reason: str | None = None
+    checked_at: float = 0
+
+
 class InboundEvent(Contract):
     event_id: str = Field(default_factory=lambda: str(uuid4()))
     conversation_id: str
@@ -40,9 +50,10 @@ class InboundEvent(Contract):
     sender_username: str | None = None
     occurrence_ref: str
     direction: Direction
-    type: Literal["text", "unknown", "file", "transcript", "system"] = "text"
+    type: Literal["text", "unknown", "file", "voice", "transcript", "system"] = "text"
     text: str | None = None
     attachment_ref: str | None = None
+    attachment: LocalAttachment | None = None
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     trace_id: str = Field(default_factory=lambda: str(uuid4()))
     confidence: float = Field(ge=0, le=1)

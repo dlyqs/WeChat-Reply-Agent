@@ -285,6 +285,58 @@ def test_private_cache_retention_preserves_recent_files_and_ledger(tmp_path):
     assert recent.exists() and ledger.exists() and not expired.exists()
 
 
+def test_workbench_reveals_only_managed_attachment_and_clear_removes_copy(system, monkeypatch):
+    from pathlib import Path
+
+    from wechat_reply_agent.adapters.wechat.local_media import attachment_directory
+    from wechat_reply_agent.domain.messages import LocalAttachment
+    from wechat_reply_agent.storage import repositories
+
+    store, service, adapter, model = system
+    directory = attachment_directory(store.settings.data_dir, "1")
+    directory.mkdir(parents=True)
+    copy = directory / "voice.silk"
+    copy.write_bytes(b"#!SILK_V3synthetic")
+    original = store.settings.data_dir / "wechat-original.silk"
+    original.write_bytes(copy.read_bytes())
+    event = inbound().model_copy(
+        update={
+            "text": None,
+            "type": "voice",
+            "attachment_ref": str(copy),
+            "attachment": LocalAttachment(kind="voice", status="available", name="voice.silk"),
+        }
+    )
+    ledger = Ledger(service.path)
+    ledger.ingest("scope", [event], "cursor", lambda _: False, 10)
+    ledger.close()
+    calls = []
+    monkeypatch.setattr(repositories.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(repositories.subprocess, "Popen", lambda cmd, **kw: calls.append(cmd))
+    with TestClient(create_app(store, service), base_url=ORIGIN) as client:
+        url = "/api/attachments/1/reveal"
+        assert client.post(url, json={}).status_code == 403
+        data = client.get("/api/conversations/friend/messages?scope=scope").json()["items"][0]
+        assert data["attachment"]["status"] == "available" and data["type"] == "voice"
+        assert "attachment_ref" not in data and str(copy) not in json.dumps(data)
+        assert client.post(url, headers=HEADERS, json={}).status_code == 200
+        assert calls == [["open", "-R", str(copy)]]
+        monkeypatch.setattr(repositories.platform, "system", lambda: "Windows")
+        assert client.post(url, headers=HEADERS, json={}).status_code == 200
+        assert calls[-1] == ["explorer.exe", "/select,", str(copy)]
+        # A tampered private ledger may not make the API reveal an arbitrary local file.
+        ledger = Ledger(service.path)
+        ledger.record_attachment("1", event.attachment, str(original))
+        ledger.close()
+        response = client.post(url, headers=HEADERS, json={})
+        assert response.json()["code"] == "attachment_location_rejected"
+        assert len(calls) == 2
+        response = client.post("/api/history/clear", headers=HEADERS, json={"confirmation": "清除"})
+        assert response.status_code == 200
+        assert not Path(directory).exists() and original.exists()
+        assert client.post(url, headers=HEADERS, json={}).status_code == 404
+
+
 def test_settings_precedence_atomic_save_and_secret_semantics(tmp_path, monkeypatch):
     path = tmp_path / ".env"
     path.write_text("LLM_API_KEY='SYNTHETIC_OLD'\nLLM_MODEL='dotenv-model'\n")

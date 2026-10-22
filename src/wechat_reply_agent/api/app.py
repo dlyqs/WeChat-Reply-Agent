@@ -140,6 +140,7 @@ def create_app(store=None, service=None, ui_dir=None):
                     "/api/memories",
                     "/api/history",
                     "/api/dashboard",
+                    "/api/attachments",
                 )
             ):
                 service.check_database(check_sources=False)
@@ -189,6 +190,12 @@ def create_app(store=None, service=None, ui_dir=None):
             "history_selection_invalid",
             "history_confirmation_required",
             "history_unresolved_outbox",
+            "attachment_not_found",
+            "attachment_not_available",
+            "attachment_file_missing",
+            "attachment_location_rejected",
+            "attachment_reveal_unsupported",
+            "attachment_reveal_failed",
         }
         code = str(exc) if str(exc) in allowed else "operation_rejected"
         return failure(code, 404 if code.endswith("_not_found") else 409)
@@ -326,6 +333,11 @@ def create_app(store=None, service=None, ui_dir=None):
             "limit": limit,
             "offset": offset,
         }
+
+    @app.post("/api/attachments/{event_id}/reveal")
+    def reveal_attachment(event_id: str):
+        with commands:
+            return service.repo.reveal_attachment(event_id)
 
     @app.get("/api/runs")
     def runs(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):

@@ -6,6 +6,7 @@ import time
 import unicodedata
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
+from wechat_reply_agent.adapters.wechat.local_media import describe_media
 from wechat_reply_agent.adapters.wechat.mac_bridge import MacBridge, environment
 from wechat_reply_agent.adapters.wechat.mac_security import require_security_clear
 from wechat_reply_agent.domain.messages import (
@@ -80,6 +81,7 @@ class MacAdapter:
             "send_preflight": p.send_preflight if p else None,
             "max_text_characters": 1000 if degraded else 200,
             "supports_newlines": degraded,
+            "local_media": ["file", "voice"],
             "target_navigation": "raise_bound_independent_window"
             if degraded
             else "manual_preselected_main_chat",
@@ -180,6 +182,8 @@ class MacAdapter:
             environment=env,
             capabilities=AdapterCapabilities(
                 profile="mac-db-v1",
+                message_types=("text", "file", "voice"),
+                raw_attachments=True,
                 identity="explicit original process/account + native friend username",
                 direction_basis="per-shard Name2Id mapping",
                 send_confirmation="new exact self record: local_db_confirmed; recipient unverified",
@@ -270,6 +274,7 @@ class MacAdapter:
         p = self.profile
         sender = row.get("sender_id")
         kind = int(row["local_type"])
+        attachment = describe_media(row)
         direction = (
             Direction.SYSTEM
             if kind == 10000
@@ -305,10 +310,20 @@ class MacAdapter:
             source_created_at=int(row["create_time"]),
             sender_username=sender,
             direction=direction,
-            type="text" if kind == 1 else "system" if kind == 10000 else "unknown",
+            type="text"
+            if kind == 1
+            else "system"
+            if kind == 10000
+            else attachment.kind
+            if attachment
+            else "unknown",
             text=row.get("text") if kind == 1 else None,
+            attachment=attachment,
             confidence=1 if direction != Direction.UNKNOWN else 0,
         )
+
+    def acquire_attachment(self, event):
+        return self._bridge.acquire_attachment(event)
 
     @staticmethod
     def check_boundary(before, now):

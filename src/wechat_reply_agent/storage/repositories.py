@@ -1,6 +1,10 @@
 """Bounded read models and manual resolution for the local workbench."""
 
 import json
+import platform
+import shutil
+import subprocess
+from pathlib import Path
 
 from wechat_reply_agent.adapters.wechat.base import AdapterError
 from wechat_reply_agent.storage.database import Ledger
@@ -46,11 +50,60 @@ class Repository:
                 "status": r["status"],
                 **{
                     key: json.loads(r["payload"]).get(key)
-                    for key in ("text", "direction", "type", "observed_at")
+                    for key in (
+                        "text",
+                        "direction",
+                        "type",
+                        "observed_at",
+                        "attachment",
+                    )
                 },
             }
             for r in rows
         ]
+
+    def reveal_attachment(self, event_id):
+        from wechat_reply_agent.adapters.wechat.local_media import attachment_directory
+
+        rows = self.read(
+            "SELECT payload FROM inbox WHERE id=? AND status!='cleared' "
+            "AND NOT EXISTS (SELECT 1 FROM history_redactions h "
+            "WHERE h.kind='inbox' AND h.record_id=inbox.id)",
+            (event_id,),
+        )
+        if not rows:
+            raise AdapterError("attachment_not_found")
+        event = json.loads(rows[0]["payload"])
+        info = event.get("attachment") or {}
+        ref = event.get("attachment_ref")
+        if (
+            event.get("type") not in ("file", "voice")
+            or info.get("status") != "available"
+            or not ref
+        ):
+            raise AdapterError("attachment_not_available")
+        path = Path(ref)
+        directory = attachment_directory(self.path.parent, event_id)
+        if not path.is_absolute() or path.is_symlink() or path.resolve().parent != directory:
+            raise AdapterError("attachment_location_rejected")
+        if not path.is_file():
+            raise AdapterError("attachment_file_missing")
+        # Reveal/select in the file manager; never execute a received attachment.
+        system = platform.system()
+        command = (
+            ["open", "-R", str(path)]
+            if system == "Darwin"
+            else ["explorer.exe", "/select,", str(path)]
+            if system == "Windows"
+            else None
+        )
+        if command is None:
+            raise AdapterError("attachment_reveal_unsupported")
+        try:
+            subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            raise AdapterError("attachment_reveal_failed") from None
+        return {"revealed": True}
 
     def outbox(self, limit, offset, scope=None, conversation=None):
         rows = self.read(
@@ -166,6 +219,7 @@ class Repository:
             SELECT 1 FROM json_each(agent_runs.input_refs) r JOIN inbox i ON i.id=r.value
             WHERE i.conversation=? AND i.scope=agent_runs.scope)))"""
         ledger = Ledger(self.path)
+        attachment_ids = []
         try:
             with ledger.db:
                 ledger.db.execute("BEGIN IMMEDIATE")
@@ -193,18 +247,22 @@ class Repository:
                         (*args, kind),
                     ).fetchall()
                     counts[kind] = len(ids)
+                    if kind == "inbox":
+                        attachment_ids = [row[0] for row in ids]
                     ledger.db.executemany(
                         "INSERT OR IGNORE INTO history_redactions VALUES(?,?)",
                         [(kind, str(row[0])) for row in ids],
                     )
                 ledger.db.execute(
                     "UPDATE inbox SET payload=json_set(payload,'$.text',NULL,"
-                    "'$.attachment_ref',NULL),status='cleared' WHERE " + inbox_where,
+                    "'$.attachment_ref',NULL,'$.attachment',NULL),status='cleared' WHERE "
+                    + inbox_where,
                     args,
                 )
                 ledger.db.execute(
                     "UPDATE messages SET payload=json_set(payload,'$.text',NULL,"
-                    "'$.attachment_ref',NULL),status='cleared' WHERE " + inbox_where,
+                    "'$.attachment_ref',NULL,'$.attachment',NULL),status='cleared' WHERE "
+                    + inbox_where,
                     args,
                 )
                 ledger.db.execute(
@@ -223,6 +281,12 @@ class Repository:
                     counts["memories"] = ledger.db.execute(
                         "DELETE FROM memories WHERE (? IS NULL OR (scope=? AND contact=?))", args
                     ).rowcount
+            from wechat_reply_agent.adapters.wechat.local_media import attachment_directory
+
+            for event_id in attachment_ids:
+                directory = attachment_directory(self.path.parent, event_id)
+                if directory.is_dir() and not directory.is_symlink():
+                    shutil.rmtree(directory)
             return {
                 "cleared": counts,
                 "deduplication_preserved": True,

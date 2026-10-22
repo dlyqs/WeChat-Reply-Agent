@@ -3635,3 +3635,12 @@ summary {
     scroll-behavior: auto !important;
   }
 }
+.chat-attachment {
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.chat-attachment .button {
+  justify-self: start;
+}

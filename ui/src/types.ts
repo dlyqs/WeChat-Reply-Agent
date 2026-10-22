@@ -52,6 +52,15 @@ export type Message = {
   direction: string;
   status: string;
   observed_at: string;
+  type: string;
+  attachment?: {
+    kind: "file" | "voice";
+    status: "pending" | "available" | "missing" | "error";
+    name: string | null;
+    byte_size: number | null;
+    format: string | null;
+    reason: string | null;
+  } | null;
 };
 export type Source = { source_ref: string; name: string; ordinal: number };
 export type Run = {

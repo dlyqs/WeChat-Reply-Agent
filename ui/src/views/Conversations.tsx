@@ -11,8 +11,15 @@ import {
 import { useWorkspace } from "../workspace";
 import type { Conversation, Message, Outbox, Page } from "../types";
 export function Conversations() {
-  const { dashboard, busy, editable, navigate, openClear, openResolve } =
-    useWorkspace();
+  const {
+    dashboard,
+    busy,
+    editable,
+    navigate,
+    openClear,
+    openResolve,
+    perform,
+  } = useWorkspace();
   const [items, setItems] = useState<Conversation[]>();
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Conversation>();
@@ -118,6 +125,8 @@ export function Conversations() {
               : "系统",
         status: statusText(m.status),
         reply: undefined as Outbox | undefined,
+        messageId: m.id,
+        attachment: m.attachment,
       })),
     ...replies.map((o) => ({
       id: "o-" + o.id,
@@ -126,6 +135,8 @@ export function Conversations() {
       author: "助理",
       status: o.mode === "dry-run" ? "仅生成 · 未发送" : statusText(o.state),
       reply: o,
+      messageId: undefined,
+      attachment: undefined,
     })),
   ].sort((a, b) => a.time - b.time);
   return (
@@ -299,7 +310,56 @@ export function Conversations() {
                         <time>{timeText(m.time)}</time>
                       </div>
                       <div className="chat-bubble">
-                        <p className="preserve">{m.text || "非文本消息"}</p>
+                        {m.attachment ? (
+                          <div className="chat-attachment">
+                            <strong>
+                              {m.attachment.kind === "voice" ? "语音" : "文件"}
+                              {m.attachment.name
+                                ? ` · ${m.attachment.name}`
+                                : ""}
+                            </strong>
+                            <span className="muted">
+                              {m.attachment.status === "available"
+                                ? `已获取到本地${m.attachment.byte_size != null ? ` · ${(m.attachment.byte_size / 1024).toFixed(1)} KB` : ""}`
+                                : m.attachment.status === "pending"
+                                  ? "等待查找本地内容"
+                                  : m.attachment.reason === "ambiguous_file"
+                                    ? "存在多个同名文件，暂时无法确定对应文件"
+                                    : m.attachment.status === "error"
+                                      ? "本地内容获取失败，运行时会自动重试"
+                                      : "未找到本地内容，下载后将在运行时重试"}
+                            </span>
+                            <small className="muted">
+                              仅保存本地内容，不参与自动回复
+                            </small>
+                            <button
+                              className="button button-secondary"
+                              disabled={
+                                busy || m.attachment.status !== "available"
+                              }
+                              title={
+                                m.attachment.status === "available"
+                                  ? "在系统文件管理器中选中本地副本，双击即可打开"
+                                  : "获取到本地内容后即可打开所在位置"
+                              }
+                              onClick={() =>
+                                void perform(
+                                  () =>
+                                    api(
+                                      `/attachments/${encodeURIComponent(m.messageId!)}/reveal`,
+                                      "POST",
+                                      {},
+                                    ),
+                                  "已打开所在位置",
+                                )
+                              }
+                            >
+                              打开所在位置
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="preserve">{m.text || "非文本消息"}</p>
+                        )}
                       </div>
                       <div className="chat-meta">
                         <Pill
