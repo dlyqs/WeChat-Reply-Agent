@@ -131,7 +131,7 @@ export const knowledgeText = (status: string): string =>
 export const reasonText = (value: string): string =>
   (
     ({
-      reply_limit: "本次已完成3条回复，点击开始可继续下一轮。",
+      reply_limit: "已达到本次回复上限。可在设置中调整，或点击开始继续下一轮。",
       baseline_recorded:
         "已连接，可在“会话”查看已有消息；正在等待好友的新消息。",
       start_required: "设置完成后，即可开始处理新消息。",

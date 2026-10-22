@@ -60,6 +60,14 @@ def test_cli_send_needs_confirmation(settings, adapter, bridge):
     assert bridge.keys == bridge.writes == 0
 
 
+def test_prototype_reply_limit_override_accepts_more_than_three():
+    assert parser().parse_args(["prototype"]).max_replies is None
+    assert parser().parse_args(["prototype", "--max-replies", "20"]).max_replies == 20
+    for invalid in ("0", "101"):
+        with pytest.raises(SystemExit):
+            parser().parse_args(["prototype", "--max-replies", invalid])
+
+
 def test_cli_send_receipt(settings, adapter, bridge, capsys):
     args = parser().parse_args(
         ["probe", "send", "--contact", "a", "--text", "PRIVATE-TEST", "--confirm-send"]

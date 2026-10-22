@@ -168,7 +168,13 @@ def parser():
     prototype = commands.add_parser("prototype", help="Bounded minimal Agent; new messages only")
     prototype.add_argument("--mode", choices=("dry-run", "live"), default="dry-run")
     prototype.add_argument("--duration", type=int, choices=range(1, 1801), default=600)
-    prototype.add_argument("--max-replies", type=int, choices=range(1, 4), default=3)
+    prototype.add_argument(
+        "--max-replies",
+        type=int,
+        choices=range(1, 101),
+        metavar="1..100",
+        help="Override MAX_REPLIES_PER_RUN for this invocation (default: configured value, or 3)",
+    )
     prototype.add_argument(
         "--allow-degraded-mac-ui",
         action="store_true",
@@ -266,7 +272,15 @@ def execute(args, settings: Settings, adapter):
             ledger = Ledger(settings.data_dir / "prototype.sqlite3")
             try:
                 runtime = Prototype(settings, adapter, CompatibleModel(settings), ledger)
-                return asyncio.run(runtime.run(args.duration, args.max_replies, args.output))
+                return asyncio.run(
+                    runtime.run(
+                        args.duration,
+                        args.max_replies
+                        if args.max_replies is not None
+                        else settings.max_replies_per_run,
+                        args.output,
+                    )
+                )
             finally:
                 ledger.close()
         if args.command == "resolve":

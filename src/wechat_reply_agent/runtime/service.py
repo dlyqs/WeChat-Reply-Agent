@@ -110,7 +110,7 @@ class RuntimeService:
                 "mode": self.settings.send_mode,
                 "generation": self.generation,
                 "sent_this_run": self.runtime.sent_count if self.runtime else 0,
-                "max_replies": 3,
+                "max_replies": self.settings.max_replies_per_run,
                 "initialization": public_steps,
                 "platform": self.adapter_info.get(
                     "platform", "macOS" if self.settings.wechat_adapter == "mac_db" else "Windows"

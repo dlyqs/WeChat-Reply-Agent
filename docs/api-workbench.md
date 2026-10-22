@@ -52,7 +52,7 @@ Mac 每次开始/恢复加载每个已选好友最近50条启动基线消息，�
 
 服务与 connect/probe/prototype 共用跨平台 `probe.lock`。只有一个专用线程执行连接、读取、发送和显式诊断；模型结果先落账本，再经过运行代数与发送闸门。暂停/停止可能等待当前模型超时或原生发送返回，UI 显示“正在处理”。停止响应返回后不会继续操作微信，退出会 join 线程。
 
-启动恢复将 pending 输入置 paused，将 pending outbox 置 paused，将 sending 置 unknown；未人工处理的 paused/unknown outbox 会阻止开始。标已发/作废不会自动重试，也不会把人工结果冒充本地数据库发送证据。自动每轮最多 3 条，发送至少间隔 30 秒、每分钟至多 2 次。
+启动恢复将 pending 输入置 paused，将 pending outbox 置 paused，将 sending 置 unknown；未人工处理的 paused/unknown outbox 会阻止开始。标已发/作废不会自动重试，也不会把人工结果冒充本地数据库发送证据。每次运行默认最多 3 条，可通过 `PATCH /api/settings` 的整数 `max_replies_per_run` 修改为1–100，保存到 `.env` 的 `MAX_REPLIES_PER_RUN`；`GET /api/runtime` 的 `max_replies` 返回当前配置值。每次开始 / 恢复重新计数，真实发送与仅生成均在成功完成后计数，达到上限自动停止。发送仍至少间隔 30 秒、每分钟至多 2 次。
 
 正式服务通过适配器 RuntimeBinding 核对账号/代数、原生库文件身份与平台，保留 Windows Phase 3 原指纹和旧账本。运行中及模型返回后发送前检查应用账本与源文件/盐变化；新增/替换分片可能需要重新核实绑定，不宣称热换库。睡眠/时钟异常间隔停止并要求重连。
 

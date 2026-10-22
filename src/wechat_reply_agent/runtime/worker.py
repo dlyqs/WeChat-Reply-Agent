@@ -5,6 +5,7 @@ import time
 
 
 async def run_worker(service, runtime):
+    max_replies = service.settings.max_replies_per_run
     runtime.start()
     with service.guard:
         if service.state != "starting":
@@ -26,7 +27,7 @@ async def run_worker(service, runtime):
         last_wall, last_mono = wall, mono
         service.check_database()
         await runtime.tick()
-        if runtime.sent_count >= 3:
+        if runtime.sent_count >= max_replies:
             runtime.stop("reply_limit")
         if runtime.running:
             # Event.wait interrupts promptly; no executor thread survives shutdown.

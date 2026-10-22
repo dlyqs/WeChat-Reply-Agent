@@ -27,6 +27,8 @@ export function Overview({ pending }: { pending: Outbox[] }) {
   } = useWorkspace();
   const active =
     bases?.items.filter((b) => b.enabled && b.document_count > 0) || [];
+  const replyLimit =
+    runtime?.max_replies ?? Number(settings?.values.max_replies_per_run ?? 3);
   const steps = [
     {
       title: "连接回复模型",
@@ -195,9 +197,12 @@ export function Overview({ pending }: { pending: Outbox[] }) {
             <small>条</small>
           </strong>
           <p>
-            本次已处理 {runtime?.sent_this_run ?? "—"} /{" "}
-            {runtime?.max_replies ?? 3} 条
+            本次已处理 {runtime?.sent_this_run ?? "—"} / {replyLimit} 条
           </p>
+          <button className="text-link" onClick={() => navigate("settings")}>
+            调整每次回复上限
+            <Icon name="arrow" size={14} />
+          </button>
         </article>
         <article className="metric-card">
           <div>
@@ -390,7 +395,10 @@ export function Overview({ pending }: { pending: Outbox[] }) {
           </button>
           <div className="micro-note">
             <Icon name="shield" size={14} />
-            <span>每次启动最多3条回复。停止或暂停后，不会自动补发旧队列。</span>
+            <span>
+              每次运行最多回复{replyLimit}条，达到上限自动停止；可在「设置 →
+              运行方式」修改。停止或暂停后，不会自动补发旧队列。
+            </span>
           </div>
         </section>
       </div>

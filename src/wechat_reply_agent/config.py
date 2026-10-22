@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     queue_max_size: int = Field(default=100, ge=1, le=1000)
     min_send_interval_seconds: float = Field(default=30, ge=30, le=3600)
     max_sends_per_minute: int = Field(default=2, ge=1, le=2)
+    max_replies_per_run: int = Field(default=3, ge=1, le=100)
     retention_days: int = Field(default=30, ge=1, le=365)
     app_host: Literal["127.0.0.1", "localhost", "::1"] = "127.0.0.1"
     app_port: int = Field(default=8765, ge=1024, le=65535)

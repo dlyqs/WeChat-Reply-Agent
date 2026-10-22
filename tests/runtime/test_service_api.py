@@ -199,6 +199,69 @@ def test_unique_worker_real_backend_records_and_stop(system):
     assert service.repo.outbox(10, 0)[0]["reply_text"] == "synthetic reply"
 
 
+@pytest.mark.parametrize("limit", [1, 3, 5])
+def test_configured_reply_limit_stops_exactly_and_restarts_with_new_limit(
+    system, monkeypatch, limit
+):
+    store, service, adapter, model = system
+    store.settings = store.settings.model_copy(update={"max_replies_per_run": limit})
+    # Only the synthetic worker skips pacing, so several replies fit in an offline test.
+    monkeypatch.setattr(Ledger, "can_send", lambda *args: True)
+
+    class FastEvent(threading.Event):
+        def wait(self, timeout=None):
+            return super().wait(0.001)
+
+    service.cancel = FastEvent()
+    adapter.snapshots = deque([[], *[[inbound(i)] for i in range(1, limit + 2)]])
+    service.start()
+    wait_for(lambda: service.future.done())
+    snapshot = service.snapshot()
+    assert snapshot["state"] == "stopped" and snapshot["reason"] == "reply_limit"
+    assert snapshot["max_replies"] == snapshot["sent_this_run"] == len(adapter.sent) == limit
+    assert len(adapter.snapshots) == 1
+
+    # A new run uses the updated cap and does not reply to the remaining old message.
+    store.settings = store.settings.model_copy(update={"max_replies_per_run": 1})
+    adapter.snapshots = deque(
+        [[inbound(i) for i in range(1, limit + 2)], [inbound(limit + 2)], [inbound(limit + 3)]]
+    )
+    service.start()
+    wait_for(lambda: service.future.done())
+    snapshot = service.snapshot()
+    assert snapshot["state"] == "stopped" and snapshot["reason"] == "reply_limit"
+    assert snapshot["max_replies"] == snapshot["sent_this_run"] == 1
+    assert len(adapter.sent) == limit + 1
+    assert adapter.sent[-1].input_event_refs == (str(limit + 2),)
+
+
+def test_reply_limit_settings_api_persists_validates_and_updates_status(system):
+    store, service, adapter, model = system
+    store.path.write_text(
+        "WECHAT_ACCOUNT_REF='offline'\nWECHAT_ALLOWLIST='[\"test\"]'\n"
+        "LLM_API_KEY='SYNTHETIC_SECRET'\nSEND_MODE='live'\nCOALESCE_WINDOW_MS=0\n"
+    )
+    with TestClient(create_app(store, service), base_url=ORIGIN) as client:
+        assert client.get("/api/settings").json()["values"]["max_replies_per_run"] == 3
+        for limit in (1, 100, 7):
+            response = client.patch(
+                "/api/settings", headers=HEADERS, json={"max_replies_per_run": limit}
+            )
+            assert response.status_code == 200
+            assert response.json()["values"]["max_replies_per_run"] == limit
+            assert client.get("/api/runtime").json()["max_replies"] == limit
+            assert Settings(_env_file=store.path).max_replies_per_run == limit
+        saved = store.path.read_bytes()
+        for invalid in (0, -1, 101, 1.5):
+            response = client.patch(
+                "/api/settings", headers=HEADERS, json={"max_replies_per_run": invalid}
+            )
+            assert response.status_code == 422
+            assert store.path.read_bytes() == saved
+            assert service.snapshot()["max_replies"] == 7
+        assert not adapter.sent and not model.entered.is_set()
+
+
 def test_pause_late_model_resume_baseline_no_old_send(system):
     store, service, adapter, model = system
     model.release.clear()

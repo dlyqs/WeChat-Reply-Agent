@@ -667,6 +667,13 @@ export function SettingsPage() {
           )}
           <div className="form-grid">
             {numeric(
+              "max_replies_per_run",
+              "每次运行最多回复（条）",
+              "默认3条，可设为1–100条；达到上限自动停止。每次开始或恢复时重新计数，仅生成回复也计入。",
+              1,
+              100,
+            )}
+            {numeric(
               "poll_interval_seconds",
               "多久读取一次消息（秒）",
               "推荐15秒；首次开始建立基线，不回复旧历史。",
@@ -676,7 +683,7 @@ export function SettingsPage() {
             {numeric(
               "min_send_interval_seconds",
               "两次发送至少间隔（秒）",
-              "保持低频，测试时至少30秒。每次启动最多回复3条。",
+              "保持低频，测试时至少30秒。",
               30,
               3600,
             )}
